@@ -38,13 +38,19 @@ class Flight:
 
     def check_availability(self):
         if self.available_seats != 0:
-            print(f"{self.available_seats} is available")
+            print(f"{self.available_seats} seats is available")
 
         else :
             print("no seats are available for this flight")
+    
+    
+    def flightschedule(self):
+        print(f" departure time: {self.departure_time}\n arrival time: {self.arrival_time}")
+
 
 flight1 = Flight(489, "egypt air", "egypt", "denmark","16:00", "23:30", "16/10/2025",26)
 flight1.update_flight_schedule("6/6/2006", "15", "23")
-  
+# print(flight1.flighdetails)
+# flight1.check_availability()
+flight1.flightschedule()
 
-  #to be continued
