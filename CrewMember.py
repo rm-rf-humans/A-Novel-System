@@ -24,8 +24,7 @@ class CrewMember:
         print(f"{self.name}'s status updated to: {new_status}")
 
 
-# Example usage:
-crew1 = CrewMember(crew_id= 164, name="Medhat Shalaby", role="Pilot", contact_info="medhat.shalaby@mbappe.com")
+""" crew1 = CrewMember(crew_id= 164, name="Medhat Shalaby", role="Pilot", contact_info="medhat.shalaby@mbappe.com")
 crew1.view_schedule()
 crew1.assign_flight("FL007")
 crew1.view_schedule()
@@ -34,5 +33,6 @@ crew1.update_status("Resting")
 crew2 = CrewMember(crew_id=199, name="Taylor Swift", role="Flight Attendant", contact_info="Taylor.swift@fayrouz.com")
 crew2.assign_flight("FL1213")
 crew2.view_schedule()
-crew2.update_status("Boarding Passengers")
+crew2.update_status("Boarding Passengers") """
+
 
