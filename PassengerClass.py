@@ -1,7 +1,7 @@
 class Passenger:
     def __init__(self,passenger_id, name, age, sex, phone_number, booking_history=None):
-        self.passenger_id = passenger_id
-        self.name = name
+        self.__passenger_id = passenger_id
+        self.__name = name
         self.age = age
         self.sex = sex 
         self.phone_number = phone_number
@@ -24,14 +24,21 @@ class Passenger:
              return
           else:
              print(f"no booking found for {name}")
+    def getinfo(self):
+       print (f"passenger name: {self.__name}\n passenger id: {self.__passenger_id}")
+   
+    
     def ViewBookingDetails(self):
-       print(self.passenger_id)
-       print(self.name)
+       print(self.__passenger_id)
+       print(self.__name)
        print(self.age)
        print(self.sex)
        print(self.phone_number)
 
 
+     
+
+
 passenger = Passenger(passenger_id=1, name="moatassem", age=18, sex="Male", phone_number="9999")
-passenger.BookFlight("moatassem",105 , "economy", True )
+passenger.BookFlight("moatassem",105 , "economy", True ) #this is not the data appearing when you call the (ViewBookingDetails) method
 passenger.ViewBookingDetails()
