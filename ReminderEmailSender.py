@@ -3,8 +3,8 @@ from datetime import datetime
 
 class ReminderEmailSender:
     def __init__(self, sender_email, sender_password):
-        self.sender_email = sender_email
-        self.sender_password = sender_password
+        self.__sender_email = sender_email
+        self.__sender_password = sender_password
 
     def send_reminder(self, passenger_name, recipient_email, flight_date):
         try :
