@@ -1,6 +1,6 @@
 class Baggage:
     def __init__(self, passenger, weight):
-        self.passenger = passenger
+        self.__passenger = passenger
         self.weight = weight        
         self.baggage_fee = 0       
 
