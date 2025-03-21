@@ -6,6 +6,11 @@ class ReminderEmailSender:
         self.__sender_email = sender_email
         self.__sender_password = sender_password
 
+   
+    
+    def GetDetails(self):
+        print(f" sender email: {self.__sender_email}\n sender password: {self.__sender_password})
+    
     def send_reminder(self, passenger_name, recipient_email, flight_date):
         try :
             days_until_flight = (datetime.strptime(flight_date, "%Y-%m-%d") - datetime.now()).days
