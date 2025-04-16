@@ -9,32 +9,32 @@ class Flight:
         self.available_seats = available_seats
         self.date = date
 
-        self.flighdetails={"flight id": flight_id, "airline: ": airline, "source": source , "destination" : destination,
-                      "departure_time" : departure_time, "arrival_time": arrival_time, "available_seats": available_seats
-                      ,"date": date}
+        self.flighdetails={"flight id": flight_id, "airline: ": airline, "source": source , "destination" : destination,"departure_time" : departure_time, "arrival_time": arrival_time, "available_seats": available_seats,"date": date}
         
 
     def update_flight_schedule(self,new_date = None,new_departure_time= None, new_arrival_time= None):
-           if new_date:
+        if new_date:
             self.date = new_date
-            self.flighdetails ["date"]=new_date
+            self.flighdetails["date"] = new_date
             print(f"flight date is updated to {new_date}") 
            
-            if new_departure_time:
-                 self.departure_time = new_departure_time
-                 self.flighdetails ["departure_time"] = new_departure_time
-                 print(f"departure time updated to {new_departure_time}")
+        if new_departure_time:
+            self.departure_time = new_departure_time
+            self.flighdetails["departure_time"] = new_departure_time
+            print(f"departure time updated to {new_departure_time}")
 
-           
-            if new_arrival_time:
-                 self.arrival_time = new_arrival_time
-                 self.flighdetails ["arrival_time"] = new_arrival_time
-                 print(f"new arrival time is updated to {new_arrival_time}")
+        if new_arrival_time:
+            self.arrival_time = new_arrival_time
+            self.flighdetails["arrival_time"] = new_arrival_time
+            print(f"new arrival time is updated to {new_arrival_time}")
 
-            if new_arrival_time and new_departure_time:
-                 if new_arrival_time<= new_departure_time:
-                  print("Error: departure time must be before arrival time")
-
+        try:
+            if new_departure_time is not None and new_arrival_time is not None:
+                if self.arrival_time <= self.departure_time:
+                    raise ValueError("Error: departure time must be before arrival time")
+        except ValueError as e:
+            print(e)
+    
 
     def check_availability(self):
         if self.available_seats != 0:
