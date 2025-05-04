@@ -2,9 +2,9 @@ from passengers.PassengerClass import Passenger
 from flights.Flight import Flight
 
 class Feedback:
-  
+
     all_feedback = []
-  
+
     def __init__(self,FeedbackNum, Passenger,Flight,rating,comment ):
         self.FeedbackNum = FeedbackNum
         self.Passenger = Passenger

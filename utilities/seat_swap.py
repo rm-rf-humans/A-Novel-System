@@ -5,7 +5,7 @@ class Passenger:
         self.__name = name        
         self.__seat = seat        
         self.__preference = preference 
-    
+
     def get_name(self):
         return self.__name
 
@@ -79,8 +79,8 @@ class EcoPassenger(Passenger):
     def __init__(self, name, seat, preference):
         super().__init__(name, seat, preference)
         self.__meals = [ 
-            "Plant-Based Wrap", "Organic Salad Bowl", "Sustainable Fish Meal", "Locally Sourced Vegan Dish"
-        ]
+                        "Plant-Based Wrap", "Organic Salad Bowl", "Sustainable Fish Meal", "Locally Sourced Vegan Dish"
+                        ]
 
     def get_meals(self):
         return self.__meals
@@ -100,11 +100,11 @@ class EcoPassenger(Passenger):
 class SeatSwapper:
     def __init__(self):
         self.__seats = {
-            "Networking": ["10A", "10B", "10C", "10D"],
-            "Quiet": ["20A", "20B", "20C", "20D"],
-            "Work": ["30A", "30B", "30C", "30D"],
-            "Legroom": ["40A", "40B", "40C", "40D"]
-        }
+                "Networking": ["10A", "10B", "10C", "10D"],
+                "Quiet": ["20A", "20B", "20C", "20D"],
+                "Work": ["30A", "30B", "30C", "30D"],
+                "Legroom": ["40A", "40B", "40C", "40D"]
+                }
         self.__passengers = []
 
     def add_passenger(self, passenger):
@@ -141,12 +141,12 @@ class SeatSwapper:
 
     def __get_zone(self, preference):
         zones = {
-            "Networking": "Networking",
-            "Sleep": "Quiet",
-            "Work": "Work",
-            "Comfort": "Legroom",
-            "Eco-Friendly": "Networking"
-        }
+                "Networking": "Networking",
+                "Sleep": "Quiet",
+                "Work": "Work",
+                "Comfort": "Legroom",
+                "Eco-Friendly": "Networking"
+                }
         return zones.get(preference, "Networking")
 
     def show_details(self):

@@ -40,8 +40,8 @@ class Passenger:
             print(f"Passenger name: {self.__name}\nPassenger ID: {self.__passenger_id}")
         except Exception as e:
             print(f"An error occurred while retrieving passenger info: {e}")
-   
-    
+
+
     def ViewBookingDetails(self):
         try:
             print(self.__passenger_id)
