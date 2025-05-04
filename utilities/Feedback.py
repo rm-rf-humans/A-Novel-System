@@ -1,5 +1,5 @@
-import Passenger, Flight
-
+from passengers.PassengerClass import Passenger
+from flights.Flight import Flight
 
 class Feedback:
   

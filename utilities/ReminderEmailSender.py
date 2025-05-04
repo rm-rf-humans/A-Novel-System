@@ -9,7 +9,7 @@ class ReminderEmailSender:
    
     
     def GetDetails(self):
-        print(f" sender email: {self.__sender_email}\n sender password: {self.__sender_password})
+        print(f" sender email: {self.__sender_email}\n sender password: {self.__sender_password}")
     
     def send_reminder(self, passenger_name, recipient_email, flight_date):
         try :
