@@ -1,9 +1,9 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox
+from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit
 from PyQt5.QtCore import Qt
 from datetime import datetime
 
-from passengers.PassengerClass import Passenger
+from passengers.PassengerClass import Passenger as BasePassenger
 from flights.Flight import Flight
 from utilities.Feedback import Feedback
 from utilities.ReminderEmailSender import ReminderEmailSender
@@ -44,15 +44,59 @@ class SeatSelectionWindow(QWidget):
         self.selected_seat_label = QLabel("Selected Seat: None", self)
         layout.addWidget(self.selected_seat_label)
 
+        # Passenger Type Selection
+        passenger_group = QGroupBox("Passenger Type")
+        passenger_layout = QFormLayout()
+        
+        self.passenger_type = QComboBox(self)
+        self.passenger_type.addItems(["Regular", "Socializer", "Tall", "Eco-Friendly"])
+        self.passenger_type.currentIndexChanged.connect(self.update_passenger_options)
+        passenger_layout.addRow("Type:", self.passenger_type)
+        
+        # Additional fields for passenger types
+        self.interest_input = QLineEdit(self)
+        self.interest_input.setPlaceholderText("Enter your interests")
+        self.interest_input.setVisible(False)
+        passenger_layout.addRow("Interests:", self.interest_input)
+        
+        self.height_input = QSpinBox(self)
+        self.height_input.setRange(150, 220)
+        self.height_input.setSuffix(" cm")
+        self.height_input.setVisible(False)
+        passenger_layout.addRow("Height:", self.height_input)
+        
+        passenger_group.setLayout(passenger_layout)
+        layout.addWidget(passenger_group)
+
+        # Seat preference selection
+        preference_group = QGroupBox("Seating Preference")
+        preference_layout = QFormLayout()
+        
+        self.preference_combo = QComboBox(self)
+        self.preference_combo.addItems(["Networking", "Sleep", "Work", "Comfort", "Eco-Friendly"])
+        preference_layout.addRow("Preference:", self.preference_combo)
+        
+        preference_group.setLayout(preference_layout)
+        layout.addWidget(preference_group)
+
         # Seat selection form (for user details)
         self.details_form = QFormLayout()
         self.name_input = QLineEdit(self)
         self.name_input.setPlaceholderText("Enter Your Name")
         self.details_form.addRow("Name: ", self.name_input)
 
+        self.email_input = QLineEdit(self)
+        self.email_input.setPlaceholderText("Enter Your Email")
+        self.details_form.addRow("Email: ", self.email_input)
+
         self.flight_combo = QComboBox(self)
         self.flight_combo.addItems(["Flight 1", "Flight 2", "Flight 3"])  # Flight options
         self.details_form.addRow("Select Flight: ", self.flight_combo)
+
+        self.flight_date = QDateEdit(self)
+        self.flight_date.setDate(datetime.now().date())
+        self.flight_date.setCalendarPopup(True)
+        self.details_form.addRow("Flight Date:", self.flight_date)
 
         self.age_input = QSpinBox(self)
         self.age_input.setRange(18, 100)  # Age range
@@ -91,10 +135,36 @@ class SeatSelectionWindow(QWidget):
         self.swap_button.clicked.connect(self.swap_seat)
         layout.addWidget(self.swap_button)
 
+        # Show available zone seats
+        self.zone_button = QPushButton("Show Zone Seats", self)
+        self.zone_button.clicked.connect(self.show_zone_seats)
+        layout.addWidget(self.zone_button)
+
+        # Send reminder email button
+        self.reminder_button = QPushButton("Schedule Reminder Email", self)
+        self.reminder_button.clicked.connect(self.schedule_reminder)
+        layout.addWidget(self.reminder_button)
+
         self.setLayout(layout)
         self.setWindowTitle('Seat Selection & Booking')
-        self.setGeometry(100, 100, 600, 700)
+        self.setGeometry(100, 100, 600, 800)
         self.show()
+
+    def update_passenger_options(self):
+        passenger_type = self.passenger_type.currentText()
+        
+        # Hide all optional fields first
+        self.interest_input.setVisible(False)
+        self.height_input.setVisible(False)
+        
+        # Show fields based on passenger type
+        if passenger_type == "Socializer":
+            self.interest_input.setVisible(True)
+        elif passenger_type == "Tall":
+            self.height_input.setVisible(True)
+        elif passenger_type == "Eco-Friendly":
+            # For Eco-Friendly, no additional fields needed
+            pass
 
     def create_seat_buttons(self):
         row = 0
@@ -141,6 +211,24 @@ class SeatSelectionWindow(QWidget):
         # Update status
         self.baggage_status.setText(baggage.get_fee_summary())
 
+    def create_appropriate_passenger(self, name, seat, preference):
+        """Create the appropriate passenger type based on selection"""
+        passenger_type = self.passenger_type.currentText()
+        
+        if passenger_type == "Socializer":
+            interest = self.interest_input.text() or "General socializing"
+            return Socializer(name, seat, preference, interest)
+        elif passenger_type == "Tall":
+            height = self.height_input.value()
+            return TallPassenger(name, seat, preference, height)
+        elif passenger_type == "Eco-Friendly":
+            eco_passenger = EcoPassenger(name, seat, preference)
+            recommended_meal = eco_passenger.recommend_meal()
+            self.selected_seat_label.setText(f"Selected Seat: {seat}\nRecommended Meal: {recommended_meal}")
+            return eco_passenger
+        else:
+            return Passenger(name, seat, preference)
+
     def book_seat(self):
         if self.selected_seat is None:
             self.selected_seat_label.setText("No seat selected. Please select a seat first.")
@@ -148,6 +236,7 @@ class SeatSelectionWindow(QWidget):
         
         passenger_name = self.name_input.text()
         flight = self.flight_combo.currentText()
+        preference = self.preference_combo.currentText()
         age = self.age_input.value()
         baggage_weight = self.baggage_weight.value()
 
@@ -155,7 +244,11 @@ class SeatSelectionWindow(QWidget):
             self.selected_seat_label.setText("Please enter your name.")
             return
 
-        passenger = Passenger(name=passenger_name, seat=self.selected_seat, preference="Networking")  # Default preference
+        passenger = self.create_appropriate_passenger(
+            name=passenger_name, 
+            seat=self.selected_seat, 
+            preference=preference
+        )
         
         # Handle baggage
         baggage = Baggage(passenger_name, baggage_weight)
@@ -165,6 +258,17 @@ class SeatSelectionWindow(QWidget):
         self.seat_swapper.add_passenger(passenger)
 
         confirmation_text = f"Booking confirmed for {passenger_name} on {flight} with seat {self.selected_seat}"
+        confirmation_text += f"\nPreference: {preference}"
+        
+        # Add passenger type specific info
+        passenger_type = self.passenger_type.currentText()
+        if passenger_type == "Socializer":
+            confirmation_text += f"\nInterests: {self.interest_input.text()}"
+        elif passenger_type == "Tall":
+            confirmation_text += f"\nHeight: {self.height_input.value()} cm"
+        elif passenger_type == "Eco-Friendly":
+            eco_passenger = passenger
+            confirmation_text += f"\nRecommended Meal: {eco_passenger.recommend_meal()}"
         
         # Add baggage information to confirmation
         if baggage_fee > 0:
@@ -174,15 +278,58 @@ class SeatSelectionWindow(QWidget):
         
         self.selected_seat_label.setText(confirmation_text)
 
-        ReminderEmailSender().send_reminder(passenger_name, flight)
-
     def swap_seat(self):
         self.seat_swapper.assign_seats()
         passenger_data = self.seat_swapper.get_passenger_data()
 
+        if not passenger_data:
+            self.selected_seat_label.setText("No passengers available for seat swapping.")
+            return
+
         swap_message = "\n".join([f"{data['name']} -> Seat {data['seat']} (Preference: {data['preference']})"
                                   for data in passenger_data])
         self.selected_seat_label.setText(f"Seat Swap Complete:\n{swap_message}")
+
+    def show_zone_seats(self):
+        available_zones = self.seat_swapper.get_available_seats()
+        zone_info = []
+        
+        for zone, seats in available_zones.items():
+            if seats:
+                seat_list = ", ".join(seats)
+                zone_info.append(f"{zone} Zone: {seat_list}")
+            else:
+                zone_info.append(f"{zone} Zone: No seats available")
+        
+        self.selected_seat_label.setText("Available Zone Seats:\n" + "\n".join(zone_info))
+
+    def schedule_reminder(self):
+        passenger_name = self.name_input.text()
+        email = self.email_input.text()
+        flight_date = self.flight_date.date().toString("yyyy-MM-dd")
+        
+        if not passenger_name or not email:
+            self.selected_seat_label.setText("Please enter your name and email to schedule a reminder.")
+            return
+        
+        # Initialize the email sender with dummy credentials (for demo purposes)
+        # In a real app, these would be securely stored credentials
+        email_sender = ReminderEmailSender(
+            sender_email="flightsystem@example.com",
+            sender_password="password123"
+        )
+        
+        # Attempt to send/schedule reminder
+        success = email_sender.send_reminder(
+            passenger_name=passenger_name,
+            recipient_email=email,
+            flight_date=flight_date
+        )
+        
+        if success:
+            self.selected_seat_label.setText(f"Reminder emails scheduled for {flight_date}")
+        else:
+            self.selected_seat_label.setText("Failed to schedule reminder. Please try again later.")
 
 
 class FeedbackWindow(QWidget):
@@ -252,16 +399,47 @@ class BaggageInfoWindow(QWidget):
         self.setGeometry(100, 100, 400, 200)
 
 
+class MainApplication(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Create tab widget
+        tabs = QTabWidget()
+        
+        # Create individual window instances
+        self.seat_window = SeatSelectionWindow()
+        self.feedback_window = FeedbackWindow()
+        self.baggage_window = BaggageInfoWindow()
+        
+        # Add windows to tabs
+        tabs.addTab(self.seat_window, "Seat Selection")
+        tabs.addTab(self.feedback_window, "Feedback")
+        tabs.addTab(self.baggage_window, "Baggage Info")
+        
+        layout.addWidget(tabs)
+        
+        self.setLayout(layout)
+        self.setWindowTitle("Flight Booking System")
+        self.setGeometry(100, 100, 800, 900)
+
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)  
 
-    seat_window = SeatSelectionWindow()
-    seat_window.show()
-
-    feedback_window = FeedbackWindow()
-    feedback_window.show()
+    # Option 1: Use separate windows
+    # seat_window = SeatSelectionWindow()
+    # seat_window.show()
+    # feedback_window = FeedbackWindow()
+    # feedback_window.show()
+    # baggage_info_window = BaggageInfoWindow()
+    # baggage_info_window.show()
     
-    baggage_info_window = BaggageInfoWindow()
-    baggage_info_window.show()
+    # Option 2: Use tabbed interface (recommended)
+    main_app = MainApplication()
+    main_app.show()
 
     sys.exit(app.exec_())
