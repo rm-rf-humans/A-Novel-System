@@ -1,10 +1,11 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit
+from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox
 from PyQt5.QtCore import Qt
 from datetime import datetime
 
 from passengers.PassengerClass import Passenger as BasePassenger
-from flights.Flight import Flight
+from flights.Flight import Flight, FlightScheduleProxy
+from flights.CrewMember import CrewMember, CrewRegistry
 from utilities.Feedback import Feedback
 from utilities.ReminderEmailSender import ReminderEmailSender
 from utilities.seat_swap import Passenger, Socializer, TallPassenger, EcoPassenger, SeatSwapper 
@@ -399,6 +400,196 @@ class BaggageInfoWindow(QWidget):
         self.setGeometry(100, 100, 400, 200)
 
 
+class CrewManagementWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.crew_registry = CrewRegistry()
+        # Initialize with some sample crew members
+        self.init_sample_data()
+        self.init_ui()
+        
+    def init_sample_data(self):
+        """Initialize with sample crew members for demonstration"""
+        try:
+            crew1 = CrewMember(101, "John Smith", "Pilot", "john.smith@airline.com")
+            crew2 = CrewMember(102, "Emily Jones", "Flight Attendant", "emily.jones@airline.com")
+            crew3 = CrewMember(103, "Carlos Rodriguez", "Co-Pilot", "carlos.rodriguez@airline.com")
+        except Exception as e:
+            print(f"Error creating sample crew members: {e}")
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Title
+        self.title_label = QLabel("Crew Management", self)
+        self.title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.title_label)
+        
+        # Form for adding new crew members
+        form_group = QGroupBox("Add New Crew Member")
+        form_layout = QFormLayout()
+        
+        self.crew_id_input = QSpinBox(self)
+        self.crew_id_input.setRange(100, 999)
+        form_layout.addRow("Crew ID:", self.crew_id_input)
+        
+        self.crew_name_input = QLineEdit(self)
+        form_layout.addRow("Name:", self.crew_name_input)
+        
+        self.crew_role_combo = QComboBox(self)
+        self.crew_role_combo.addItems(["Pilot", "Co-Pilot", "Flight Attendant", "Purser"])
+        form_layout.addRow("Role:", self.crew_role_combo)
+        
+        self.crew_contact_input = QLineEdit(self)
+        self.crew_contact_input.setPlaceholderText("email@example.com")
+        form_layout.addRow("Contact (Email):", self.crew_contact_input)
+        
+        self.add_crew_button = QPushButton("Add Crew Member", self)
+        self.add_crew_button.clicked.connect(self.add_crew_member)
+        form_layout.addRow(self.add_crew_button)
+        
+        form_group.setLayout(form_layout)
+        layout.addWidget(form_group)
+        
+        # Table to display crew members
+        self.crew_table = QTableWidget(self)
+        self.crew_table.setColumnCount(6)
+        self.crew_table.setHorizontalHeaderLabels(["ID", "Name", "Role", "Contact", "Flight", "Status"])
+        self.crew_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        layout.addWidget(self.crew_table)
+        
+        # Flight assignment section
+        assignment_group = QGroupBox("Assign Flight")
+        assignment_layout = QFormLayout()
+        
+        self.crew_select_combo = QComboBox(self)
+        self.update_crew_combo()
+        assignment_layout.addRow("Select Crew:", self.crew_select_combo)
+        
+        self.flight_id_input = QLineEdit(self)
+        self.flight_id_input.setPlaceholderText("e.g., FL123")
+        assignment_layout.addRow("Flight ID:", self.flight_id_input)
+        
+        self.assign_flight_button = QPushButton("Assign Flight", self)
+        self.assign_flight_button.clicked.connect(self.assign_flight)
+        assignment_layout.addRow(self.assign_flight_button)
+        
+        # Status update section
+        self.status_combo = QComboBox(self)
+        self.status_combo.addItems(["Available", "On Duty", "Resting", "Boarding Passengers"])
+        assignment_layout.addRow("Update Status:", self.status_combo)
+        
+        self.update_status_button = QPushButton("Update Status", self)
+        self.update_status_button.clicked.connect(self.update_crew_status)
+        assignment_layout.addRow(self.update_status_button)
+        
+        assignment_group.setLayout(assignment_layout)
+        layout.addWidget(assignment_group)
+        
+        # Refresh button
+        self.refresh_button = QPushButton("Refresh Crew List", self)
+        self.refresh_button.clicked.connect(self.refresh_crew_list)
+        layout.addWidget(self.refresh_button)
+        
+        self.setLayout(layout)
+        self.setWindowTitle('Crew Management')
+        self.setGeometry(100, 100, 600, 700)
+        
+        # Initial population of the table
+        self.refresh_crew_list()
+    
+    def update_crew_combo(self):
+        """Update the crew selection dropdown"""
+        self.crew_select_combo.clear()
+        for crew in self.crew_registry.all_crew():
+            self.crew_select_combo.addItem(f"{crew.crew_id}: {crew.name}", crew.crew_id)
+    
+    def add_crew_member(self):
+        """Add a new crew member"""
+        try:
+            crew_id = self.crew_id_input.value()
+            name = self.crew_name_input.text().strip()
+            role = self.crew_role_combo.currentText()
+            contact = self.crew_contact_input.text().strip()
+            
+            if not name:
+                raise ValueError("Name cannot be empty")
+            
+            new_crew = CrewMember(crew_id, name, role, contact)
+            QMessageBox.information(self, "Success", f"Added crew member: {name}")
+            
+            # Clear inputs
+            self.crew_name_input.clear()
+            self.crew_contact_input.clear()
+            self.crew_id_input.setValue(self.crew_id_input.value() + 1)
+            
+            # Refresh displays
+            self.refresh_crew_list()
+            self.update_crew_combo()
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Error", str(e))
+    
+    def assign_flight(self):
+        """Assign selected crew member to a flight"""
+        if self.crew_select_combo.count() == 0:
+            QMessageBox.warning(self, "Error", "No crew members available")
+            return
+        
+        crew_id = self.crew_select_combo.currentData()
+        flight_id = self.flight_id_input.text().strip()
+        
+        if not flight_id:
+            QMessageBox.warning(self, "Error", "Please enter a flight ID")
+            return
+        
+        try:
+            crew_member = self.crew_registry.get_crew_member(crew_id)
+            if crew_member:
+                crew_member.assign_flight(flight_id)
+                QMessageBox.information(self, "Success", f"Assigned {crew_member.name} to flight {flight_id}")
+                self.refresh_crew_list()
+            else:
+                QMessageBox.warning(self, "Error", "Crew member not found")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", str(e))
+    
+    def update_crew_status(self):
+        """Update the status of selected crew member"""
+        if self.crew_select_combo.count() == 0:
+            QMessageBox.warning(self, "Error", "No crew members available")
+            return
+        
+        crew_id = self.crew_select_combo.currentData()
+        new_status = self.status_combo.currentText()
+        
+        try:
+            crew_member = self.crew_registry.get_crew_member(crew_id)
+            if crew_member:
+                crew_member.update_status(new_status)
+                QMessageBox.information(self, "Success", f"Updated {crew_member.name}'s status to {new_status}")
+                self.refresh_crew_list()
+            else:
+                QMessageBox.warning(self, "Error", "Crew member not found")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", str(e))
+    
+    def refresh_crew_list(self):
+        """Refresh the crew list table"""
+        crew_list = self.crew_registry.all_crew()
+        self.crew_table.setRowCount(len(crew_list))
+        
+        for row, crew in enumerate(crew_list):
+            self.crew_table.setItem(row, 0, QTableWidgetItem(str(crew.crew_id)))
+            self.crew_table.setItem(row, 1, QTableWidgetItem(crew.name))
+            self.crew_table.setItem(row, 2, QTableWidgetItem(crew.role))
+            self.crew_table.setItem(row, 3, QTableWidgetItem(crew.contact_info))
+            self.crew_table.setItem(row, 4, QTableWidgetItem(crew.assigned_flight or "None"))
+            self.crew_table.setItem(row, 5, QTableWidgetItem(crew.status))
+        
+        self.crew_table.resizeColumnsToContents()
+
+
 class MainApplication(QWidget):
     def __init__(self):
         super().__init__()
@@ -414,11 +605,13 @@ class MainApplication(QWidget):
         self.seat_window = SeatSelectionWindow()
         self.feedback_window = FeedbackWindow()
         self.baggage_window = BaggageInfoWindow()
+        self.crew_window = CrewManagementWindow()
         
         # Add windows to tabs
         tabs.addTab(self.seat_window, "Seat Selection")
         tabs.addTab(self.feedback_window, "Feedback")
         tabs.addTab(self.baggage_window, "Baggage Info")
+        tabs.addTab(self.crew_window, "Crew Management")
         
         layout.addWidget(tabs)
         
@@ -437,6 +630,8 @@ if __name__ == "__main__":
     # feedback_window.show()
     # baggage_info_window = BaggageInfoWindow()
     # baggage_info_window.show()
+    # crew_window = CrewManagementWindow()
+    # crew_window.show()
     
     # Option 2: Use tabbed interface (recommended)
     main_app = MainApplication()

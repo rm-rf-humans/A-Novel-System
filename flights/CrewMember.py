@@ -26,14 +26,14 @@ class CrewMember:
             raise TypeError("Name, role, and contact info must all be strings.")
         if "@" not in contact_info or "." not in contact_info:
             raise ValueError("Invalid email format for contact_info.")
-
+            
         self.crew_id = crew_id
         self.name = name
         self.role = role
         self.contact_info = contact_info
         self.assigned_flight = None
         self.status = "Available"
-
+        
         # Register this crew member
         CrewRegistry().add_crew_member(self)
 
@@ -42,6 +42,7 @@ class CrewMember:
             raise TypeError("Flight ID must be a string.")
         if self.status == "On Duty":
             raise Exception(f"{self.name} is already assigned to flight {self.assigned_flight}.")
+            
         self.assigned_flight = flight_id
         self.status = "On Duty"
 
@@ -52,6 +53,7 @@ class CrewMember:
         valid_statuses = ["Available", "On Duty", "Resting", "Boarding Passengers"]
         if new_status not in valid_statuses:
             raise ValueError(f"'{new_status}' is not a valid status. Valid options are: {valid_statuses}")
+            
         self.status = new_status
 
     def to_dict(self):
