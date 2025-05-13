@@ -1,9 +1,10 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox
+from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox, QCheckBox
 from PyQt5.QtCore import Qt
 from datetime import datetime, time
 
 from passengers.PassengerClass import Passenger as BasePassenger
+from passengers.ticket import Ticket, TicketProxy
 from flights.Flight import Flight, FlightScheduleProxy
 from flights.CrewMember import CrewMember, CrewRegistry
 from utilities.Feedback import Feedback
@@ -38,6 +39,9 @@ class SeatSelectionWindow(QWidget):
         # Create proxies for each flight
         self.flight_proxies = [FlightScheduleProxy(flight) for flight in self.flights]
     
+        self.ticket_counter = 1000  # Starting ticket number
+        self.tickets = {}  # Dictionary to store tickets by ticket_id
+ 
         self.init_ui()
 
     def init_ui(self):
@@ -117,6 +121,10 @@ class SeatSelectionWindow(QWidget):
         self.age_input.setRange(18, 100)  # Age range
         self.details_form.addRow("Age: ", self.age_input)
 
+        self.payment_status = QCheckBox("Payment Completed", self)
+        self.payment_status.setChecked(True)  # Default to paid
+        self.details_form.addRow("Payment Status:", self.payment_status)
+
         # Baggage information section
         baggage_group = QGroupBox("Baggage Information")
         baggage_layout = QFormLayout()
@@ -164,6 +172,27 @@ class SeatSelectionWindow(QWidget):
         self.setWindowTitle('Seat Selection & Booking')
         self.setGeometry(100, 100, 600, 800)
         self.show()
+
+    def generate_ticket_id(self):
+        """Generate a unique ticket ID"""
+        self.ticket_counter += 1
+        return f"TKT{self.ticket_counter}"
+
+    def create_ticket(self, passenger_name, flight_id, seat_number, payment_status):
+        """Create a new ticket and return its proxy"""
+        ticket_id = self.generate_ticket_id()
+        ticket = Ticket(ticket_id, passenger_name, flight_id, seat_number, payment_status)
+        ticket_proxy = TicketProxy(ticket)
+        self.tickets[ticket_id] = ticket_proxy
+        return ticket_proxy
+
+    def change_seat_with_ticket(self, ticket_id, new_seat):
+        """Change seat using a ticket proxy"""
+        if ticket_id in self.tickets:
+            ticket_proxy = self.tickets[ticket_id]
+            result = ticket_proxy.change_seat(new_seat)
+            return result
+        return "Ticket not found."
 
     def update_passenger_options(self):
         passenger_type = self.passenger_type.currentText()
@@ -258,10 +287,11 @@ class SeatSelectionWindow(QWidget):
         
         passenger_name = self.name_input.text()
         selected_flight = self.get_selected_flight()
-        flight_info = f"{selected_flight.flight_id}: {selected_flight.airline} ({selected_flight.source} to {selected_flight.destination})"
+        flight_id = selected_flight.flight_id
         preference = self.preference_combo.currentText()
         age = self.age_input.value()
         baggage_weight = self.baggage_weight.value()
+        payment_status = self.payment_status.isChecked()
 
         if passenger_name == "":
             self.selected_seat_label.setText("Please enter your name.")
@@ -273,6 +303,15 @@ class SeatSelectionWindow(QWidget):
             preference=preference
         )
         
+        # Create ticket
+        ticket_proxy = self.create_ticket(
+            passenger_name=passenger_name,
+            flight_id=flight_id,
+            seat_number=self.selected_seat,
+            payment_status=payment_status
+        )
+        ticket_details = ticket_proxy.get_ticket_details()
+        
         # Handle baggage
         baggage = Baggage(passenger_name, baggage_weight)
         baggage.calculate_fee()
@@ -280,9 +319,13 @@ class SeatSelectionWindow(QWidget):
         
         self.seat_swapper.add_passenger(passenger)
 
+        flight_info = f"{selected_flight.flight_id}: {selected_flight.airline} ({selected_flight.source} to {selected_flight.destination})"
+        
         confirmation_text = f"Booking confirmed for {passenger_name} on {flight_info} with seat {self.selected_seat}"
         confirmation_text += f"\nPreference: {preference}"
-        
+        confirmation_text += f"\nTicket ID: {ticket_details['ticket_id']}"
+        confirmation_text += f"\nPayment Status: {'Paid' if payment_status else 'Pending'}"
+                
         # Add passenger type specific info
         passenger_type = self.passenger_type.currentText()
         if passenger_type == "Socializer":
@@ -378,6 +421,30 @@ class FeedbackWindow(QWidget):
         self.submit_button.clicked.connect(self.submit_feedback)
         layout.addWidget(self.submit_button)
 
+        ticket_group = QGroupBox("Ticket Operations")
+        ticket_layout = QFormLayout()
+
+        self.ticket_id_input = QLineEdit(self)
+        self.ticket_id_input.setPlaceholderText("Enter Ticket ID")
+        ticket_layout.addRow("Ticket ID:", self.ticket_id_input)
+
+        self.new_seat_input = QLineEdit(self)
+        self.new_seat_input.setPlaceholderText("e.g., 2B")
+        ticket_layout.addRow("New Seat:", self.new_seat_input)
+
+        # Button for changing seat
+        seat_change_button = QPushButton("Change Seat", self)
+        seat_change_button.clicked.connect(self.handle_seat_change)
+        ticket_layout.addRow(seat_change_button)
+
+        # Button for canceling ticket
+        cancel_ticket_button = QPushButton("Cancel Ticket", self)
+        cancel_ticket_button.clicked.connect(self.handle_ticket_cancel)
+        ticket_layout.addRow(cancel_ticket_button)
+
+        ticket_group.setLayout(ticket_layout)
+        layout.addWidget(ticket_group)
+
         self.setLayout(layout)
         self.setWindowTitle('Feedback')
         self.setGeometry(100, 100, 400, 200)
@@ -388,6 +455,46 @@ class FeedbackWindow(QWidget):
             self.feedback_input.setText("Please enter feedback.")
         else:
             self.feedback_input.setText("Thank you for your feedback!")
+    
+    def handle_seat_change(self):
+        """Handle seat change request"""
+        ticket_id = self.ticket_id_input.text().strip()
+        new_seat = self.new_seat_input.text().strip()
+        
+        if not ticket_id or not new_seat:
+            self.selected_seat_label.setText("Please enter both Ticket ID and new seat.")
+            return
+        
+        if new_seat not in self.available_seats or not self.available_seats[new_seat]:
+            self.selected_seat_label.setText(f"Seat {new_seat} is not available.")
+            return
+        
+        result = self.change_seat_with_ticket(ticket_id, new_seat)
+        self.selected_seat_label.setText(result)
+
+    def handle_ticket_cancel(self):
+        """Handle ticket cancellation request"""
+        ticket_id = self.ticket_id_input.text().strip()
+        
+        if not ticket_id:
+            self.selected_seat_label.setText("Please enter a Ticket ID.")
+            return
+        
+        if ticket_id in self.tickets:
+            ticket_proxy = self.tickets[ticket_id]
+            result = ticket_proxy.cancel_ticket()
+            
+            # Free up the seat
+            ticket_details = ticket_proxy.get_ticket_details()
+            old_seat = ticket_details["seat_number"]
+            self.available_seats[old_seat] = True
+            
+            # Remove the ticket
+            del self.tickets[ticket_id]
+            
+            self.selected_seat_label.setText(result)
+        else:
+            self.selected_seat_label.setText("Ticket not found.")
 
 
 class BaggageInfoWindow(QWidget):
