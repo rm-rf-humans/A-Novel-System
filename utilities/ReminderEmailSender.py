@@ -11,7 +11,7 @@ class ReminderEmailSender:
 
     def send_reminder(self, passenger_name: str, recipient_email: str, flight_date: str) -> bool:
         try:
-            days_until_flight = (datetime.strptime(flight_date, "%Y-%m-%d") - datetime.now()).days
+            days_until_flight = (datetime.strptime(flight_date, "%Y-%m-%d").date() - datetime.now().date()).days
             if days_until_flight in [7, 3, 1]:
                 subject = f"{days_until_flight}-Day Flight Reminder"
                 body = (
