@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox
 from PyQt5.QtCore import Qt
-from datetime import datetime
+from datetime import datetime, time
 
 from passengers.PassengerClass import Passenger as BasePassenger
 from flights.Flight import Flight, FlightScheduleProxy
@@ -26,6 +26,18 @@ class SeatSelectionWindow(QWidget):
 
         self.selected_seat = None  # Track selected seat
         self.seat_swapper = SeatSwapper()  # Initialize seat swapper
+        self.flights = [
+        Flight("FL001", "AirExpress", "New York", "Los Angeles", 
+               time(8, 0), time(11, 30), datetime.now().date(), 120),
+        Flight("FL002", "SkyWings", "Chicago", "Miami", 
+               time(9, 15), time(12, 45), datetime.now().date(), 90),
+        Flight("FL003", "OceanAir", "Boston", "San Francisco", 
+               time(14, 30), time(18, 0), datetime.now().date(), 75)
+        ]
+    
+        # Create proxies for each flight
+        self.flight_proxies = [FlightScheduleProxy(flight) for flight in self.flights]
+    
         self.init_ui()
 
     def init_ui(self):
@@ -91,7 +103,9 @@ class SeatSelectionWindow(QWidget):
         self.details_form.addRow("Email: ", self.email_input)
 
         self.flight_combo = QComboBox(self)
-        self.flight_combo.addItems(["Flight 1", "Flight 2", "Flight 3"])  # Flight options
+        for flight in self.flights:
+            self.flight_combo.addItem(f"{flight.flight_id}: {flight.airline} - {flight.source} to {flight.destination}", 
+                                    flight.flight_id)
         self.details_form.addRow("Select Flight: ", self.flight_combo)
 
         self.flight_date = QDateEdit(self)
@@ -166,6 +180,13 @@ class SeatSelectionWindow(QWidget):
         elif passenger_type == "Eco-Friendly":
             # For Eco-Friendly, no additional fields needed
             pass
+    
+    def get_selected_flight(self):
+        flight_id = self.flight_combo.currentData()
+        for flight in self.flights:
+            if flight.flight_id == flight_id:
+                return flight
+        return None
 
     def create_seat_buttons(self):
         row = 0
@@ -236,7 +257,8 @@ class SeatSelectionWindow(QWidget):
             return
         
         passenger_name = self.name_input.text()
-        flight = self.flight_combo.currentText()
+        selected_flight = self.get_selected_flight()
+        flight_info = f"{selected_flight.flight_id}: {selected_flight.airline} ({selected_flight.source} to {selected_flight.destination})"
         preference = self.preference_combo.currentText()
         age = self.age_input.value()
         baggage_weight = self.baggage_weight.value()
@@ -258,7 +280,7 @@ class SeatSelectionWindow(QWidget):
         
         self.seat_swapper.add_passenger(passenger)
 
-        confirmation_text = f"Booking confirmed for {passenger_name} on {flight} with seat {self.selected_seat}"
+        confirmation_text = f"Booking confirmed for {passenger_name} on {flight_info} with seat {self.selected_seat}"
         confirmation_text += f"\nPreference: {preference}"
         
         # Add passenger type specific info
@@ -623,17 +645,6 @@ class MainApplication(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)  
 
-    # Option 1: Use separate windows
-    # seat_window = SeatSelectionWindow()
-    # seat_window.show()
-    # feedback_window = FeedbackWindow()
-    # feedback_window.show()
-    # baggage_info_window = BaggageInfoWindow()
-    # baggage_info_window.show()
-    # crew_window = CrewManagementWindow()
-    # crew_window.show()
-    
-    # Option 2: Use tabbed interface (recommended)
     main_app = MainApplication()
     main_app.show()
 
