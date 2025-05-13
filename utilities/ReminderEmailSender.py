@@ -1,29 +1,39 @@
 import smtplib
 from datetime import datetime
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 
 class ReminderEmailSender:
-    def __init__(self, sender_email, sender_password):
-        self.__sender_email = sender_email
-        self.__sender_password = sender_password
+    def __init__(self, sender_email: str, sender_password: str):
+        self._sender_email = sender_email
+        self._sender_password = sender_password
 
-
-
-    def GetDetails(self):
-        print(f" sender email: {self.__sender_email}\n sender password: {self.__sender_password}")
-
-    def send_reminder(self, passenger_name, recipient_email, flight_date):
-        try :
+    def send_reminder(self, passenger_name: str, recipient_email: str, flight_date: str) -> bool:
+        try:
             days_until_flight = (datetime.strptime(flight_date, "%Y-%m-%d") - datetime.now()).days
-
             if days_until_flight in [7, 3, 1]:
-                message = f"Subject: {days_until_flight} Day Reminder\n\n Dear {passenger_name}. + \n + I hope you are doing well, + \n + I want to anounce you that your flight is in{days_until_flight} day(s)! + \n + Best regards. "
+                subject = f"{days_until_flight}-Day Flight Reminder"
+                body = (
+                    f"Dear {passenger_name},\n\n"
+                    f"This is a reminder that your flight is in {days_until_flight} day(s).\n"
+                    f"Please check your itinerary and be prepared.\n\n"
+                    f"Best regards,\nFlight System"
+                )
+
+                msg = MIMEMultipart()
+                msg["From"] = self._sender_email
+                msg["To"] = recipient_email
+                msg["Subject"] = subject
+                msg.attach(MIMEText(body, "plain"))
+
                 with smtplib.SMTP("smtp.gmail.com", 587) as server:
                     server.starttls()
-                    server.login(self.sender_email, self.sender_password)
-                    server.sendmail(self.sender_email, recipient_email, message)
-                print(f"Reminder sent to {recipient_email}")
-        except Exception as e:
-            print(f"Error: {e}")
+                    server.login(self._sender_email, self._sender_password)
+                    server.sendmail(self._sender_email, recipient_email, msg.as_string())
 
-sender = ReminderEmailSender("your_email@gmail.com", "your_password")
-sender.send_reminder("Adel Shakal", "passenger_email@example.com", "10-3-2025")
+                return True
+            return False
+        except Exception as e:
+            print(f"Reminder Email Error: {e}")
+            return False
