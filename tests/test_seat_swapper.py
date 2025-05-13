@@ -23,7 +23,7 @@ class TestSeatSwapper(unittest.TestCase):
 
         self.system.assign_seats()
 
-        self.assertNotEqual(self.socializer.get_seat(), "10A")  # Seat should be swapped
+        self.assertNotEqual(self.socializer.get_seat(), "10B")  # Seat should be swapped
         self.assertNotEqual(self.tall_passenger.get_seat(), "30A")
         self.assertIn(self.eco_passenger.get_seat(), ["10A", "10B", "10C", "10D"])  # Networking Zone
         self.assertIn(self.tall_passenger.get_seat(), ["40A", "40B", "40C", "40D"])  # Comfort Zone

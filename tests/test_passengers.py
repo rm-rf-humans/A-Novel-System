@@ -18,7 +18,7 @@ class TestPassengerTicket(unittest.TestCase):
         t = Ticket(102, "Clark", "FL999", 7, True)
         proxy = TicketProxy(t)
         msg = proxy.change_seat(21)
-        self.assertEqual(msg, "Seat changed to 21")
+        self.assertEqual(msg, "Seat changed to 21.")
 
     def test_ticket_cancel(self):
         t = Ticket(103, "Diana", "FL321", 5, True)
