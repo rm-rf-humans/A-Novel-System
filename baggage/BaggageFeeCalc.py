@@ -1,18 +1,39 @@
-class Baggage:
-    def __init__(self, weight, limit, Fee_kg):
-        self.weight = weight
-        self.limit = limit
-        self.Fee_kg = Fee_kg
+class BaggageFeePolicy:
+    _instance = None
 
-    def fee(self):
-        return max(0, (self.weight - self.limit) * self.Fee_kgkg)
+    def __new__(cls, limit=20, fee_per_kg=10):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.limit = limit
+            cls._instance.fee_per_kg = fee_per_kg
+        return cls._instance
 
-    def within_limit(self):
-        return self.weight <= self.limit
+    def get_limit(self):
+        return self.limit
 
-if __name__ == "__main__":
-    bag = Baggage(25, 20, 10)
-    if bag.within_limit():
-        print("No extra fee.")
-    else:
-        print(f"Extra fee: {bag.fee():.2f}")
+    def get_fee_per_kg(self):
+        return self.fee_per_kg
+
+
+class BaggageFeeCalculator:
+    def __init__(self):
+        self.policy = BaggageFeePolicy()
+
+    def calculate_fee(self, weight):
+        over_limit = max(0, weight - self.policy.get_limit())
+        return over_limit * self.policy.get_fee_per_kg()
+
+    def within_limit(self, weight):
+        return weight <= self.policy.get_limit()
+
+
+class BaggageFeeCalculatorProxy:
+    def __init__(self):
+        self.calculator = BaggageFeeCalculator()
+
+    def calculate_fee(self, weight):
+        return self.calculator.calculate_fee(weight)
+
+    def get_limit(self):
+        return self.calculator.policy.get_limit()
+

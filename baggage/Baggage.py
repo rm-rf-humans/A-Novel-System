@@ -1,20 +1,23 @@
+from baggage.BaggageFeeCalc import BaggageFeeCalculatorProxy
+
 class Baggage:
-    def __init__(self, passenger, weight):
-        self.__passenger = passenger
+    def __init__(self, passenger_name, weight):
+        self.passenger_name = passenger_name
         self.weight = weight        
-        self.baggage_fee = 0       
+        self.baggage_fee = 0
+        self.calculator = BaggageFeeCalculatorProxy()
 
     def check_baggage_weight(self):
-       
-        if self.weight > 20:
-            print(f"baggage weight is {self.weight} kg the allowed limit is 20 kg")
-        else:
-            print("baggage weight is within the allowed limit")
-     
+        return self.weight <= self.calculator.get_limit()
+
     def calculate_fee(self):
-     
-        if self.weight <= 20:
-            self.baggage_fee = 0  
+        self.baggage_fee = self.calculator.calculate_fee(self.weight)
+        return self.baggage_fee
+
+    def get_fee_summary(self):
+        limit = self.calculator.get_limit()
+        if self.check_baggage_weight():
+            return f"No extra fee. Weight: {self.weight}kg (Limit: {limit}kg)"
         else:
-            self.baggage_fee = (self.weight - 20) * 10 
-        print(f"baggage fee: ${self.baggage_fee}")
+            return f"Baggage is {self.weight}kg, which exceeds limit of {limit}kg. Fee: ${self.baggage_fee}"
+

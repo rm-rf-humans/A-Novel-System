@@ -1,56 +1,55 @@
 class Flight:
-    def __init__(self,flight_id, airline, source, destination, departure_time, arrival_time,date, available_seats):
+    def __init__(self, flight_id, airline, source, destination, departure_time, arrival_time, date, available_seats):
         self.flight_id = flight_id
         self.airline = airline
         self.source = source
         self.destination = destination
         self.departure_time = departure_time
         self.arrival_time = arrival_time
-        self.available_seats = available_seats
         self.date = date
+        self.available_seats = available_seats
 
-        self.flighdetails={"flight id": flight_id, "airline: ": airline, "source": source , "destination" : destination,"departure_time" : departure_time, "arrival_time": arrival_time, "available_seats": available_seats,"date": date}
-        
-
-    def update_flight_schedule(self,new_date = None,new_departure_time= None, new_arrival_time= None):
-        if new_date:
-            self.date = new_date
-            self.flighdetails["date"] = new_date
-            print(f"flight date is updated to {new_date}") 
-           
-        if new_departure_time:
-            self.departure_time = new_departure_time
-            self.flighdetails["departure_time"] = new_departure_time
-            print(f"departure time updated to {new_departure_time}")
-
-        if new_arrival_time:
-            self.arrival_time = new_arrival_time
-            self.flighdetails["arrival_time"] = new_arrival_time
-            print(f"new arrival time is updated to {new_arrival_time}")
-
-        try:
-            if new_departure_time is not None and new_arrival_time is not None:
-                if self.arrival_time <= self.departure_time:
-                    raise ValueError("Error: departure time must be before arrival time")
-        except ValueError as e:
-            print(e)
-    
+    def to_dict(self):
+        return {
+            "flight_id": self.flight_id,
+            "airline": self.airline,
+            "source": self.source,
+            "destination": self.destination,
+            "departure_time": self.departure_time,
+            "arrival_time": self.arrival_time,
+            "date": self.date,
+            "available_seats": self.available_seats
+        }
 
     def check_availability(self):
-        if self.available_seats != 0:
-            print(f"{self.available_seats} seats is available")
+        return self.available_seats > 0
 
-        else :
-            print("no seats are available for this flight")
-    
-    
-    def flightschedule(self):
-        print(f" departure time: {self.departure_time}\n arrival time: {self.arrival_time}")
+    def schedule_summary(self):
+        return {
+            "departure": self.departure_time,
+            "arrival": self.arrival_time
+        }
+
+    def update_schedule(self, new_date=None, new_departure_time=None, new_arrival_time=None):
+        if new_departure_time and new_arrival_time and new_arrival_time <= new_departure_time:
+            raise ValueError("Departure time must be before arrival time.")
+
+        if new_date:
+            self.date = new_date
+        if new_departure_time:
+            self.departure_time = new_departure_time
+        if new_arrival_time:
+            self.arrival_time = new_arrival_time
 
 
-flight1 = Flight(489, "egypt air", "egypt", "denmark","16:00", "23:30", "16/10/2025",26)
-flight1.update_flight_schedule("6/6/2006", "15", "23")
-# print(flight1.flighdetails)
-# flight1.check_availability()
-flight1.flightschedule()
+class FlightScheduleProxy:
+    """Proxy to control and log updates to flight schedules"""
+    def __init__(self, flight):
+        self._flight = flight
 
+    def update_schedule(self, *args, **kwargs):
+        # Here you could add logging, access control, etc.
+        return self._flight.update_schedule(*args, **kwargs)
+
+    def get_schedule(self):
+        return self._flight.schedule_summary()
