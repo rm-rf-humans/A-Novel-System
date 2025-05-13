@@ -1,5 +1,5 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox
+from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox
 from PyQt5.QtCore import Qt
 from datetime import datetime
 
@@ -7,7 +7,8 @@ from passengers.PassengerClass import Passenger
 from flights.Flight import Flight
 from utilities.Feedback import Feedback
 from utilities.ReminderEmailSender import ReminderEmailSender
-from utilities.seat_swap import Passenger, Socializer, TallPassenger, EcoPassenger, SeatSwapper  
+from utilities.seat_swap import Passenger, Socializer, TallPassenger, EcoPassenger, SeatSwapper 
+from baggage.Baggage import Baggage
 
 
 class SeatSelectionWindow(QWidget):
@@ -57,7 +58,28 @@ class SeatSelectionWindow(QWidget):
         self.age_input.setRange(18, 100)  # Age range
         self.details_form.addRow("Age: ", self.age_input)
 
+        # Baggage information section
+        baggage_group = QGroupBox("Baggage Information")
+        baggage_layout = QFormLayout()
+        
+        self.baggage_weight = QDoubleSpinBox(self)
+        self.baggage_weight.setRange(0, 50)  # Weight range in kg
+        self.baggage_weight.setDecimals(1)
+        self.baggage_weight.setSuffix(" kg")
+        self.baggage_weight.setValue(15.0)  # Default weight
+        baggage_layout.addRow("Baggage Weight:", self.baggage_weight)
+        
+        self.check_baggage_button = QPushButton("Check Baggage Fee", self)
+        self.check_baggage_button.clicked.connect(self.check_baggage)
+        baggage_layout.addRow(self.check_baggage_button)
+        
+        self.baggage_status = QLabel("No baggage checked yet", self)
+        baggage_layout.addRow(self.baggage_status)
+        
+        baggage_group.setLayout(baggage_layout)
+        
         layout.addLayout(self.details_form)
+        layout.addWidget(baggage_group)
 
         # Submit button for booking the seat
         self.submit_button = QPushButton("Book Seat", self)
@@ -71,7 +93,7 @@ class SeatSelectionWindow(QWidget):
 
         self.setLayout(layout)
         self.setWindowTitle('Seat Selection & Booking')
-        self.setGeometry(100, 100, 500, 500)
+        self.setGeometry(100, 100, 600, 700)
         self.show()
 
     def create_seat_buttons(self):
@@ -102,6 +124,23 @@ class SeatSelectionWindow(QWidget):
         else:
             self.selected_seat_label.setText("Seat already taken, please select another.")
 
+    def check_baggage(self):
+        passenger_name = self.name_input.text()
+        weight = self.baggage_weight.value()
+        
+        if passenger_name == "":
+            self.baggage_status.setText("Please enter your name first.")
+            return
+        
+        # Create baggage instance
+        baggage = Baggage(passenger_name, weight)
+        
+        # Calculate fee
+        baggage.calculate_fee()
+        
+        # Update status
+        self.baggage_status.setText(baggage.get_fee_summary())
+
     def book_seat(self):
         if self.selected_seat is None:
             self.selected_seat_label.setText("No seat selected. Please select a seat first.")
@@ -110,16 +149,30 @@ class SeatSelectionWindow(QWidget):
         passenger_name = self.name_input.text()
         flight = self.flight_combo.currentText()
         age = self.age_input.value()
+        baggage_weight = self.baggage_weight.value()
 
         if passenger_name == "":
             self.selected_seat_label.setText("Please enter your name.")
             return
 
         passenger = Passenger(name=passenger_name, seat=self.selected_seat, preference="Networking")  # Default preference
-
+        
+        # Handle baggage
+        baggage = Baggage(passenger_name, baggage_weight)
+        baggage.calculate_fee()
+        baggage_fee = baggage.baggage_fee
+        
         self.seat_swapper.add_passenger(passenger)
 
-        self.selected_seat_label.setText(f"Booking confirmed for {passenger_name} on {flight} with seat {self.selected_seat}")
+        confirmation_text = f"Booking confirmed for {passenger_name} on {flight} with seat {self.selected_seat}"
+        
+        # Add baggage information to confirmation
+        if baggage_fee > 0:
+            confirmation_text += f"\nBaggage fee: ${baggage_fee} (Weight: {baggage_weight}kg)"
+        else:
+            confirmation_text += f"\nNo baggage fee (Weight: {baggage_weight}kg)"
+        
+        self.selected_seat_label.setText(confirmation_text)
 
         ReminderEmailSender().send_reminder(passenger_name, flight)
 
@@ -167,6 +220,38 @@ class FeedbackWindow(QWidget):
             self.feedback_input.setText("Thank you for your feedback!")
 
 
+class BaggageInfoWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        # Title
+        self.title_label = QLabel("Baggage Policy Information", self)
+        self.title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.title_label)
+
+        # Policy information
+        from baggage.BaggageFeeCalc import BaggageFeeCalculatorProxy
+        calculator = BaggageFeeCalculatorProxy()
+        
+        policy_info = QLabel(f"""
+        Baggage Policy:
+        - Weight limit: {calculator.get_limit()} kg
+        - Fee per kg overweight: ${calculator.calculator.policy.get_fee_per_kg()}
+        
+        Excess baggage fees will be charged for any baggage exceeding the weight limit.
+        """, self)
+        policy_info.setAlignment(Qt.AlignLeft)
+        layout.addWidget(policy_info)
+
+        self.setLayout(layout)
+        self.setWindowTitle('Baggage Policy')
+        self.setGeometry(100, 100, 400, 200)
+
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)  
 
@@ -175,5 +260,8 @@ if __name__ == "__main__":
 
     feedback_window = FeedbackWindow()
     feedback_window.show()
+    
+    baggage_info_window = BaggageInfoWindow()
+    baggage_info_window.show()
 
-    sys.exit(app.exec_()) 
+    sys.exit(app.exec_())
