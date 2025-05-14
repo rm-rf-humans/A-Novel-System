@@ -1,5 +1,5 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox, QCheckBox
+from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox, QCheckBox, QFileDialog
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QPalette, QColor, QIcon
 from datetime import datetime, time
@@ -12,7 +12,6 @@ from utilities.Feedback import Feedback
 from utilities.ReminderEmailSender import ReminderEmailSender
 from utilities.seat_swap import Passenger, Socializer, TallPassenger, EcoPassenger, SeatSwapper 
 from baggage.Baggage import Baggage
-
 
 class SeatSelectionWindow(QWidget):
     def __init__(self):
@@ -152,6 +151,26 @@ class SeatSelectionWindow(QWidget):
         
         layout.addLayout(self.details_form)
         layout.addWidget(baggage_group)
+
+        # ID Scanner Section
+        id_scanner_group = QGroupBox("ID Scanner")
+        id_scanner_layout = QVBoxLayout()
+        
+        self.scan_id_button = QPushButton("Scan ID or Passport", self)
+        self.scan_id_button.setIcon(QIcon.fromTheme("document-scanner", QIcon()))
+        self.scan_id_button.clicked.connect(self.scan_id_document)
+        
+        self.document_type_combo = QComboBox(self)
+        self.document_type_combo.addItems(["passport", "id_card"])
+        
+        scanner_form = QFormLayout()
+        scanner_form.addRow("Document Type:", self.document_type_combo)
+        
+        id_scanner_layout.addLayout(scanner_form)
+        id_scanner_layout.addWidget(self.scan_id_button)
+        
+        id_scanner_group.setLayout(id_scanner_layout)
+        layout.addWidget(id_scanner_group)
 
         # Submit button for booking the seat
         self.submit_button = QPushButton(" Book Seat", self)
@@ -501,6 +520,49 @@ class SeatSelectionWindow(QWidget):
         else:
             self.selected_seat_label.setText("Failed to schedule reminder. Please try again later.")
 
+    def scan_id_document(self):
+        """Open a file dialog to select an ID document image and process it"""
+        try:
+            # Open file dialog to select image
+            file_dialog = QFileDialog()
+            file_path, _ = file_dialog.getOpenFileName(
+                self, 
+                "Select ID Document", 
+                "", 
+                "Image Files (*.png *.jpg *.jpeg *.bmp)"
+            )
+            
+            if file_path:
+                # Get selected document type
+                document_type = self.document_type_combo.currentText()
+                
+                # Show processing message
+                self.selected_seat_label.setText("Processing document... Please wait.")
+                self.selected_seat_label.setStyleSheet("""
+                    background-color: #eaf2f8;
+                    border: 1px solid #aed6f1;
+                    border-radius: 5px;
+                    padding: 10px;
+                    color: #2980b9;
+                    font-weight: bold;
+                """)
+                QApplication.processEvents()  # Update UI
+                
+                # Process the document using the function from ID.py
+                from ML.ID import process_id_for_seat_selection
+                process_id_for_seat_selection(self, file_path, document_type)
+                
+        except Exception as e:
+            # Display error
+            self.selected_seat_label.setText(f"Error scanning document: {str(e)}")
+            self.selected_seat_label.setStyleSheet("""
+                background-color: #fdedec;
+                border: 1px solid #f5b7b1;
+                border-radius: 5px;
+                padding: 10px;
+                color: #c0392b;
+                font-weight: bold;
+            """)
 
 class FeedbackWindow(QWidget):
     def __init__(self):
