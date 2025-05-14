@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox, QCheckBox
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QPalette, QColor
+from PyQt5.QtGui import QFont, QPalette, QColor, QIcon
 from datetime import datetime, time
 
 from passengers.PassengerClass import Passenger as BasePassenger
@@ -47,9 +47,13 @@ class SeatSelectionWindow(QWidget):
 
     def init_ui(self):
         layout = QVBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        
 
-        # Title/Instruction
+        # Title/Instruction with modern styling
         self.title_label = QLabel("Select Your Seat", self)
+        self.title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2980b9; margin-bottom: 0px;")
+        self.title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.title_label)
 
         # Seat Map Layout (Grid)
@@ -150,22 +154,26 @@ class SeatSelectionWindow(QWidget):
         layout.addWidget(baggage_group)
 
         # Submit button for booking the seat
-        self.submit_button = QPushButton("Book Seat", self)
+        self.submit_button = QPushButton(" Book Seat", self)
+        self.submit_button.setIcon(QIcon.fromTheme("document-save", QIcon()))  # PyQt will use system theme icon if available
         self.submit_button.clicked.connect(self.book_seat)
         layout.addWidget(self.submit_button)
 
         # Swap Seat button
-        self.swap_button = QPushButton("Swap Seat", self)
+        self.swap_button = QPushButton(" Swap Seat", self)
+        self.swap_button.setIcon(QIcon.fromTheme("view-refresh", QIcon()))
         self.swap_button.clicked.connect(self.swap_seat)
         layout.addWidget(self.swap_button)
 
         # Show available zone seats
-        self.zone_button = QPushButton("Show Zone Seats", self)
+        self.zone_button = QPushButton(" Show Zone Seats", self)
+        self.zone_button.setIcon(QIcon.fromTheme("view-grid", QIcon()))
         self.zone_button.clicked.connect(self.show_zone_seats)
         layout.addWidget(self.zone_button)
 
         # Send reminder email button
-        self.reminder_button = QPushButton("Schedule Reminder Email", self)
+        self.reminder_button = QPushButton(" Schedule Reminder Email", self)
+        self.reminder_button.setIcon(QIcon.fromTheme("mail-send", QIcon()))
         self.reminder_button.clicked.connect(self.schedule_reminder)
         layout.addWidget(self.reminder_button)
 
@@ -222,15 +230,57 @@ class SeatSelectionWindow(QWidget):
         row = 0
         col = 0
 
+        # Create airplane layout
         for seat, available in self.available_seats.items():
             seat_button = QPushButton(seat, self)
-            seat_button.setFixedSize(50, 50)
-            seat_button.setEnabled(available)  
+            seat_button.setFixedSize(55, 55)
+            seat_button.setEnabled(available)
+            
+            if seat.endswith(('A', 'D')):  # Window seats
+                if available:
+                    seat_button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #85c1e9;
+                            color: #2c3e50;
+                            border: none;
+                            border-radius: 8px;
+                            font-weight: bold;
+                        }
+                        QPushButton:hover {
+                            background-color: #5dade2;
+                        }
+                    """)
+                else:
+                    seat_button.setStyleSheet("background-color: #d6eaf8; color: #7f8c8d; border: none; border-radius: 8px;")
+            else:  # Middle seats
+                if available:
+                    seat_button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #aed6f1;
+                            color: #2c3e50;
+                            border: none;
+                            border-radius: 8px;
+                            font-weight: bold;
+                        }
+                        QPushButton:hover {
+                            background-color: #7fb3d5;
+                        }
+                    """)
+                else:
+                    seat_button.setStyleSheet("background-color: #ebf5fb; color: #7f8c8d; border: none; border-radius: 8px;")
+            
             seat_button.clicked.connect(self.select_seat)
             self.grid_layout.addWidget(seat_button, row, col)
             
+            # Add aisle spacing between seats B and C
+            if seat.endswith('B'):
+                col += 1
+                aisle = QLabel("", self)
+                aisle.setFixedSize(20, 60)
+                self.grid_layout.addWidget(aisle, row, col)
+                
             col += 1
-            if col > 3:  
+            if col > 4:  # Adjusted for aisle
                 col = 0
                 row += 1
 
@@ -238,14 +288,61 @@ class SeatSelectionWindow(QWidget):
         selected_button = self.sender()  
         selected_seat = selected_button.text()
 
+        # Reset previous selection if any
+        if self.selected_seat:
+            old_seat_button = None
+            for i in range(self.grid_layout.count()):
+                widget = self.grid_layout.itemAt(i).widget()
+                if isinstance(widget, QPushButton) and widget.text() == self.selected_seat:
+                    old_seat_button = widget
+                    break
+            
+            if old_seat_button:
+                # Reset to available styling
+                if self.selected_seat.endswith(('A', 'D')):  # Window seats
+                    old_seat_button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #85c1e9;
+                            color: #2c3e50;
+                            border: none;
+                            border-radius: 8px;
+                            font-weight: bold;
+                        }
+                        QPushButton:hover {
+                            background-color: #5dade2;
+                        }
+                    """)
+                else:  # Middle seats
+                    old_seat_button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #aed6f1;
+                            color: #2c3e50;
+                            border: none;
+                            border-radius: 8px;
+                            font-weight: bold;
+                        }
+                        QPushButton:hover {
+                            background-color: #7fb3d5;
+                        }
+                    """)
+
         if self.available_seats[selected_seat]:  
             self.selected_seat = selected_seat
             self.selected_seat_label.setText(f"Selected Seat: {self.selected_seat}")
-            self.available_seats[selected_seat] = False  
-            selected_button.setEnabled(False)
+            
+            # Highlight selected seat with vibrant color
+            selected_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #2ecc71;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-weight: bold;
+                }
+            """)
         else:
             self.selected_seat_label.setText("Seat already taken, please select another.")
-
+   
     def check_baggage(self):
         passenger_name = self.name_input.text()
         weight = self.baggage_weight.value()
@@ -343,8 +440,16 @@ class SeatSelectionWindow(QWidget):
         else:
             confirmation_text += f"\nNo baggage fee (Weight: {baggage_weight}kg)"
         
+        self.selected_seat_label.setStyleSheet("""
+            background-color: #e8f8f5;
+            border: 1px solid #abebc6;
+            border-radius: 5px;
+            padding: 10px;
+            color: #27ae60;
+            font-weight: bold;
+        """)
         self.selected_seat_label.setText(confirmation_text)
-
+        
     def swap_seat(self):
         self.seat_swapper.assign_seats()
         passenger_data = self.seat_swapper.get_passenger_data()
@@ -379,8 +484,6 @@ class SeatSelectionWindow(QWidget):
             self.selected_seat_label.setText("Please enter your name and email to schedule a reminder.")
             return
         
-        # Initialize the email sender with dummy credentials (for demo purposes)
-        # In a real app, these would be securely stored credentials
         email_sender = ReminderEmailSender(
             sender_email="flightsystem@example.com",
             sender_password="password123"
@@ -790,15 +893,52 @@ class MainApplication(QWidget):
                 border-bottom-color: white;
             }
         """)
-        
+
         self.init_ui()
         
     def init_ui(self):
         layout = QVBoxLayout()
-        
-        # Create tab widget
+        layout.setSpacing(15)
+
+        # Add fancy header
+        header = QWidget()
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+
+        app_title = QLabel("E-JUST Airways", self)
+        app_title.setStyleSheet("font-size: 20px; font-weight: bold; color: #2980b9;")
+        header_layout.addWidget(app_title)
+
+        header_layout.addStretch()
+        layout.addWidget(header)
+
+        # Create tab widget with modern styling
         tabs = QTabWidget()
-        
+        tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #dde2eb;
+                border-radius: 6px;
+                padding: 0px;
+                background-color: white;
+            }
+            QTabBar::tab {
+                background-color: #e1e8f0;
+                color: #4a6fa5;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                padding: 5px 15px;
+                margin-right: 4px;
+                font-size: 11px;
+            }
+            QTabBar::tab:selected {
+                background-color: #4a6fa5;
+                color: white;
+            }
+            QTabBar::tab:hover:!selected {
+                background-color: #d1d8e0;
+            }
+        """)        
+
         # Create individual window instances
         self.seat_window = SeatSelectionWindow()
         self.feedback_window = FeedbackWindow()
