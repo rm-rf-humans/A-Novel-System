@@ -1,6 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox, QCheckBox
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont, QPalette, QColor
 from datetime import datetime, time
 
 from passengers.PassengerClass import Passenger as BasePassenger
@@ -722,6 +723,74 @@ class CrewManagementWindow(QWidget):
 class MainApplication(QWidget):
     def __init__(self):
         super().__init__()
+
+        self.setStyleSheet("""
+            QWidget {
+                font-family: 'Segoe UI', Arial, sans-serif;
+                background-color: #f7f9fc;
+            }
+            QGroupBox {
+                border: 1px solid #dde2eb;
+                border-radius: 6px;
+                margin-top: 12px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                color: #4a6fa5;
+            }
+            QPushButton {
+                background-color: #4a6fa5;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #5a7fb5;
+            }
+            QPushButton:pressed {
+                background-color: #3a5f95;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+            }
+            QLabel {
+                color: #333333;
+            }
+            QLineEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox {
+                border: 1px solid #dde2eb;
+                border-radius: 4px;
+                padding: 6px;
+                background-color: white;
+            }
+            QTableWidget {
+                border: 1px solid #dde2eb;
+                background-color: white;
+                gridline-color: #f0f0f0;
+            }
+            QTabWidget::pane {
+                border: 1px solid #dde2eb;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QTabBar::tab {
+                background-color: #e1e8f0;
+                color: #4a6fa5;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                padding: 8px 16px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: white;
+                border-bottom-color: white;
+            }
+        """)
+        
         self.init_ui()
         
     def init_ui(self):
