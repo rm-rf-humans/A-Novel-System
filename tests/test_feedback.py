@@ -34,3 +34,6 @@ class TestFeedback(unittest.TestCase):
         self.feedback.submit_feedback()
         all_feedback = Feedback.get_all_feedback()
         self.assertGreater(len(all_feedback), 0)
+
+if __name__ == "__main__":
+    unittest.main()

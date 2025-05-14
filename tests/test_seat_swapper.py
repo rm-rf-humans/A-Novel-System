@@ -48,3 +48,6 @@ class TestSeatSwapper(unittest.TestCase):
         """Test that eco-friendly meals are recommended correctly."""
         self.system.add_passenger(self.eco_passenger)
         self.eco_passenger.recommend_meal()  # Should recommend a meal
+
+if __name__ == "__main__":
+    unittest.main()
