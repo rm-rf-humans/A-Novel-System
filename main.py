@@ -365,7 +365,15 @@ class SeatSelectionWindow(QWidget):
             """)
         else:
             self.selected_seat_label.setText("Seat already taken, please select another.")
-   
+    
+    # creating function to return the information of the flight, id, and name
+    def get_flight_info(self):
+        flight_id = self.flight_combo.currentData()
+        for flight in self.flights:
+            if flight.flight_id == flight_id:
+                return f"{flight.flight_id}: {flight.airline} ({flight.source} to {flight.destination})"
+        return None
+    
     def check_baggage(self):
         passenger_name = self.name_input.text()
         weight = self.baggage_weight.value()
@@ -887,9 +895,10 @@ class CrewManagementWindow(QWidget):
         self.crew_table.resizeColumnsToContents()
 
 class AIAssistantWindow(QWidget):
-    def __init__(self):
+    def __init__(self, seat_selection_window):
         super().__init__()
-        
+        self.seat_selection_window = seat_selection_window
+        #inherit from SeatSelectionWindow
         self.ai_assistant = AIAssistant()
         self.init_ui()
 
@@ -1106,8 +1115,17 @@ class AIAssistantWindow(QWidget):
         self.chat_history.append("<b>AI Assistant:</b> Hello! Welcome to E-JUST Airways. How can I help you with your flight today?")
 
     def send_bot_message(self):
-        """Send user message to the AI assistant and display response"""
+
+        self.flight = self.seat_selection_window.get_flight_info()
+
         user_message = self.chat_input.text().strip()
+        if user_message == "flight":
+            self.chat_history.append(f"<b>You:</b> {user_message}")
+            flight_info = self.flight
+            self.chat_history.append(f"<b>AI Assistant:</b> {flight_info}")
+            self.chat_input.clear()
+            return
+
         if not user_message:
             return
         
@@ -1263,7 +1281,7 @@ class MainApplication(QWidget):
         self.feedback_window = FeedbackWindow()
         self.baggage_window = BaggageInfoWindow()
         self.crew_window = CrewManagementWindow()
-        self.ai_assistant_window = AIAssistantWindow()  # Add our new AI Assistant window
+        self.ai_assistant_window = AIAssistantWindow(self.seat_window) 
 
         # Add windows to tabs
         tabs.addTab(self.seat_window, "Seat Selection")
