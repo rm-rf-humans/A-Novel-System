@@ -17,6 +17,53 @@ class CrewRegistry:
     def all_crew(self):
         return list(self._crew_members.values())
 
+class User:
+    def __init__(self, username, role):
+        self.username = username
+        self.role = role
+
+    def has_permission(self, action):
+        permissions = {
+            "admin": ["add", "remove", "view", "update"],
+            "staff": ["view", "update"],
+            "guest": ["view"]
+        }
+        return action in permissions.get(self.role, [])
+    
+
+class CrewRegistryProxy:
+    def __init__(self, user):
+        self.user = user
+        self.registry = CrewRegistry()
+
+    def add_crew_member(self, crew_member):
+        if not self.user.has_permission("add"):
+            raise PermissionError(f"User '{self.user.username}' does not have permission to add crew members.")
+        self.registry.add_crew_member(crew_member)
+
+    def remove_crew_member(self, crew_id):
+        if not self.user.has_permission("remove"):
+            raise PermissionError(f"User '{self.user.username}' does not have permission to remove crew members.")
+        self.registry._crew_members.pop(crew_id, None)
+
+    def get_crew_member(self, crew_id):
+        if not self.user.has_permission("view"):
+            raise PermissionError(f"User '{self.user.username}' does not have permission to view crew members.")
+        return self.registry.get_crew_member(crew_id)
+
+    def all_crew(self):
+        if not self.user.has_permission("view"):
+            raise PermissionError(f"User '{self.user.username}' does not have permission to view crew members.")
+        return self.registry.all_crew()
+
+    def update_crew_member_status(self, crew_id, status):
+        if not self.user.has_permission("update"):
+            raise PermissionError(f"User '{self.user.username}' does not have permission to update crew members.")
+        member = self.registry.get_crew_member(crew_id)
+        if member:
+            member.update_status(status)
+        else:
+            raise ValueError(f"No crew member found with ID {crew_id}")
 
 class CrewMember:
     def __init__(self, crew_id, name, role, contact_info):
