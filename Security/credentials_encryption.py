@@ -1,11 +1,30 @@
 import os
 from cryptography.fernet import Fernet
+from abc import ABC, abstractmethod
 
-class CredentialsManager:
+class BaseCredentialsManager(ABC):
+    @abstractmethod
+    def encrypt_credentials(self, email, password):
+        pass
+
+    @abstractmethod
+    def decrypt_credentials(self):
+        pass
+
+class CredentialsManager(BaseCredentialsManager):
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self, key_file='security/credentials.key', creds_file='security/credentials.enc'):
-        self.key_file = key_file
-        self.creds_file = creds_file
-        self.key = self.load_or_generate_key()
+        if not hasattr(self, 'initialized'):
+            self.key_file = key_file
+            self.creds_file = creds_file
+            self.key = self.load_or_generate_key()
+            self.initialized = True
 
     def load_or_generate_key(self):
         # Generate a key if it doesn't exist
