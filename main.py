@@ -186,31 +186,27 @@ class SeatSelectionWindow(QWidget):
 
         button_layout = QHBoxLayout()
 
-        # Submit button for booking the seat
+
         self.submit_button = QPushButton(" Book Seat", self)
         self.submit_button.setIcon(QIcon.fromTheme("document-save", QIcon()))  
         self.submit_button.clicked.connect(self.book_seat)
         button_layout.addWidget(self.submit_button)
 
-        # Swap Seat button
         self.swap_button = QPushButton(" Swap Seat", self)
         self.swap_button.setIcon(QIcon.fromTheme("view-refresh", QIcon()))
         self.swap_button.clicked.connect(self.swap_seat)
         button_layout.addWidget(self.swap_button)
 
-        # Show available zone seats
         self.zone_button = QPushButton(" Show Zone Seats", self)
         self.zone_button.setIcon(QIcon.fromTheme("view-grid", QIcon()))
         self.zone_button.clicked.connect(self.show_zone_seats)
         button_layout.addWidget(self.zone_button)
 
-        # Send reminder email button
         self.reminder_button = QPushButton(" Schedule Reminder Email", self)
         self.reminder_button.setIcon(QIcon.fromTheme("mail-send", QIcon()))
         self.reminder_button.clicked.connect(self.schedule_reminder)
         button_layout.addWidget(self.reminder_button)
 
-        # Add the horizontal button layout to the main vertical layout
         layout.addLayout(button_layout)
 
         self.setLayout(layout)
@@ -219,12 +215,10 @@ class SeatSelectionWindow(QWidget):
         self.show()
 
     def generate_ticket_id(self):
-        """Generate a unique ticket ID"""
         self.ticket_counter += 1
         return f"TKT{self.ticket_counter}"
 
     def create_ticket(self, passenger_name, flight_id, seat_number, payment_status):
-        """Create a new ticket and return its proxy"""
         ticket_id = self.generate_ticket_id()
         ticket = Ticket(ticket_id, passenger_name, flight_id, seat_number, payment_status)
         ticket_proxy = TicketProxy(ticket)
@@ -232,7 +226,6 @@ class SeatSelectionWindow(QWidget):
         return ticket_proxy
 
     def change_seat_with_ticket(self, ticket_id, new_seat):
-        """Change seat using a ticket proxy"""
         if ticket_id in self.tickets:
             ticket_proxy = self.tickets[ticket_id]
             result = ticket_proxy.change_seat(new_seat)
@@ -242,11 +235,9 @@ class SeatSelectionWindow(QWidget):
     def update_passenger_options(self):
         passenger_type = self.passenger_type.currentText()
         
-        # Hide all optional fields first
         self.interest_input.setVisible(False)
         self.height_input.setVisible(False)
         
-        # Show fields based on passenger type
         if passenger_type == "Socializer":
             self.interest_input.setVisible(True)
         elif passenger_type == "Tall":
@@ -265,7 +256,6 @@ class SeatSelectionWindow(QWidget):
         row = 0
         col = 0
 
-        # Create airplane layout
         for seat, available in self.available_seats.items():
             seat_button = QPushButton(seat, self)
             seat_button.setFixedSize(45, 45)
@@ -390,11 +380,9 @@ class SeatSelectionWindow(QWidget):
         # Calculate fee
         baggage.calculate_fee()
         
-        # Update status
         self.baggage_status.setText(baggage.get_fee_summary())
 
     def create_appropriate_passenger(self, name, seat, preference):
-        """Create the appropriate passenger type based on selection"""
         passenger_type = self.passenger_type.currentText()
         
         if passenger_type == "Socializer":
