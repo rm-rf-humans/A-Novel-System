@@ -18,7 +18,6 @@ class SeatSelectionWindow(QWidget):
     def __init__(self):
         super().__init__()
 
-        # Initial available seats
         self.available_seats = {
             "1A": True, "1B": True, "1C": True, "1D": True,
             "2A": True, "2B": True, "2C": True, "2D": True,
@@ -26,8 +25,8 @@ class SeatSelectionWindow(QWidget):
             "4A": True, "4B": True, "4C": True, "4D": True,
         }
 
-        self.selected_seat = None  # Track selected seat
-        self.seat_swapper = SeatSwapper()  # Initialize seat swapper
+        self.selected_seat = None
+        self.seat_swapper = SeatSwapper()
         self.flights = [
         Flight("FL001", "AirExpress", "New York", "Los Angeles", 
                time(8, 0), time(11, 30), datetime.now().date(), 120),
@@ -37,11 +36,10 @@ class SeatSelectionWindow(QWidget):
                time(14, 30), time(18, 0), datetime.now().date(), 75)
         ]
     
-        # Create proxies for each flight
         self.flight_proxies = [FlightScheduleProxy(flight) for flight in self.flights]
     
-        self.ticket_counter = 1000  # Starting ticket number
-        self.tickets = {}  # Dictionary to store tickets by ticket_id
+        self.ticket_counter = 1000
+        self.tickets = {}
  
         self.init_ui()
 
@@ -50,7 +48,6 @@ class SeatSelectionWindow(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         
 
-        # Title/Instruction with modern styling
         self.title_label = QLabel("Select Your Seat", self)
         self.title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2980b9; margin-bottom: 0px;")
         self.title_label.setAlignment(Qt.AlignCenter)
@@ -101,15 +98,25 @@ class SeatSelectionWindow(QWidget):
         preference_group.setLayout(preference_layout)
         layout.addWidget(preference_group)
 
-        # Seat selection form (for user details)
         self.details_form = QFormLayout()
+
+        personal_info_layout = QHBoxLayout()
+
+        self.details_form.addRow(personal_info_layout)
+
         self.name_input = QLineEdit(self)
         self.name_input.setPlaceholderText("Enter Your Name")
-        self.details_form.addRow("Name: ", self.name_input)
+        name_layout = QVBoxLayout()
+        name_layout.addWidget(QLabel("Name:"))
+        name_layout.addWidget(self.name_input)
+        personal_info_layout.addLayout(name_layout)
 
         self.email_input = QLineEdit(self)
         self.email_input.setPlaceholderText("Enter Your Email")
-        self.details_form.addRow("Email: ", self.email_input)
+        email_layout = QVBoxLayout()
+        email_layout.addWidget(QLabel("Email:"))
+        email_layout.addWidget(self.email_input)
+        personal_info_layout.addLayout(email_layout)
 
         self.flight_combo = QComboBox(self)
         for flight in self.flights:
@@ -122,12 +129,16 @@ class SeatSelectionWindow(QWidget):
         self.flight_date.setCalendarPopup(True)
         self.details_form.addRow("Flight Date:", self.flight_date)
 
-        self.age_input = QSpinBox(self)
-        self.age_input.setRange(18, 100)  # Age range
-        self.details_form.addRow("Age: ", self.age_input)
 
+        self.age_input = QSpinBox(self)
+        self.age_input.setRange(18, 100)
+        age_layout = QVBoxLayout()
+        age_layout.addWidget(QLabel("Age:"))
+        age_layout.addWidget(self.age_input)
+        personal_info_layout.addLayout(age_layout)
+        
         self.payment_status = QCheckBox("Payment Completed", self)
-        self.payment_status.setChecked(True)  # Default to paid
+        self.payment_status.setChecked(True)
         self.details_form.addRow("Payment Status:", self.payment_status)
 
         # Baggage information section
@@ -135,10 +146,10 @@ class SeatSelectionWindow(QWidget):
         baggage_layout = QFormLayout()
         
         self.baggage_weight = QDoubleSpinBox(self)
-        self.baggage_weight.setRange(0, 50)  # Weight range in kg
+        self.baggage_weight.setRange(0, 50)
         self.baggage_weight.setDecimals(1)
         self.baggage_weight.setSuffix(" kg")
-        self.baggage_weight.setValue(15.0)  # Default weight
+        self.baggage_weight.setValue(15.0)
         baggage_layout.addRow("Baggage Weight:", self.baggage_weight)
         
         self.check_baggage_button = QPushButton("Check Baggage Fee", self)
@@ -173,29 +184,34 @@ class SeatSelectionWindow(QWidget):
         id_scanner_group.setLayout(id_scanner_layout)
         layout.addWidget(id_scanner_group)
 
+        button_layout = QHBoxLayout()
+
         # Submit button for booking the seat
         self.submit_button = QPushButton(" Book Seat", self)
-        self.submit_button.setIcon(QIcon.fromTheme("document-save", QIcon()))  # PyQt will use system theme icon if available
+        self.submit_button.setIcon(QIcon.fromTheme("document-save", QIcon()))  
         self.submit_button.clicked.connect(self.book_seat)
-        layout.addWidget(self.submit_button)
+        button_layout.addWidget(self.submit_button)
 
         # Swap Seat button
         self.swap_button = QPushButton(" Swap Seat", self)
         self.swap_button.setIcon(QIcon.fromTheme("view-refresh", QIcon()))
         self.swap_button.clicked.connect(self.swap_seat)
-        layout.addWidget(self.swap_button)
+        button_layout.addWidget(self.swap_button)
 
         # Show available zone seats
         self.zone_button = QPushButton(" Show Zone Seats", self)
         self.zone_button.setIcon(QIcon.fromTheme("view-grid", QIcon()))
         self.zone_button.clicked.connect(self.show_zone_seats)
-        layout.addWidget(self.zone_button)
+        button_layout.addWidget(self.zone_button)
 
         # Send reminder email button
         self.reminder_button = QPushButton(" Schedule Reminder Email", self)
         self.reminder_button.setIcon(QIcon.fromTheme("mail-send", QIcon()))
         self.reminder_button.clicked.connect(self.schedule_reminder)
-        layout.addWidget(self.reminder_button)
+        button_layout.addWidget(self.reminder_button)
+
+        # Add the horizontal button layout to the main vertical layout
+        layout.addLayout(button_layout)
 
         self.setLayout(layout)
         self.setWindowTitle('Seat Selection & Booking')
