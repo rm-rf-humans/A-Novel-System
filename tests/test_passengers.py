@@ -3,7 +3,6 @@ from passengers.PassengerClass import Passenger
 from passengers.ticket import Ticket, TicketProxy
 
 class TestPassengerTicket(unittest.TestCase):
-
     def test_booking(self):
         p = Passenger(1, "Bruce", 30, "Male", "9999")
         result = p.book_flight("Economy", True)

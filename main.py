@@ -1,6 +1,7 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox, QCheckBox
-from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox, QCheckBox, QFileDialog, QTextEdit, QGraphicsDropShadowEffect, QFrame
+from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtGui import QFont, QPalette, QColor, QIcon, QPixmap
 from datetime import datetime, time
 
 from passengers.PassengerClass import Passenger as BasePassenger
@@ -11,7 +12,7 @@ from utilities.Feedback import Feedback
 from utilities.ReminderEmailSender import ReminderEmailSender
 from utilities.seat_swap import Passenger, Socializer, TallPassenger, EcoPassenger, SeatSwapper 
 from baggage.Baggage import Baggage
-
+from ML.Bot import AIAssistant
 
 class SeatSelectionWindow(QWidget):
     def __init__(self):
@@ -46,9 +47,13 @@ class SeatSelectionWindow(QWidget):
 
     def init_ui(self):
         layout = QVBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        
 
-        # Title/Instruction
+        # Title/Instruction with modern styling
         self.title_label = QLabel("Select Your Seat", self)
+        self.title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2980b9; margin-bottom: 0px;")
+        self.title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.title_label)
 
         # Seat Map Layout (Grid)
@@ -148,23 +153,47 @@ class SeatSelectionWindow(QWidget):
         layout.addLayout(self.details_form)
         layout.addWidget(baggage_group)
 
+        # ID Scanner Section
+        id_scanner_group = QGroupBox("ID Scanner")
+        id_scanner_layout = QVBoxLayout()
+        
+        self.scan_id_button = QPushButton("Scan ID or Passport", self)
+        self.scan_id_button.setIcon(QIcon.fromTheme("document-scanner", QIcon()))
+        self.scan_id_button.clicked.connect(self.scan_id_document)
+        
+        self.document_type_combo = QComboBox(self)
+        self.document_type_combo.addItems(["passport", "id_card"])
+        
+        scanner_form = QFormLayout()
+        scanner_form.addRow("Document Type:", self.document_type_combo)
+        
+        id_scanner_layout.addLayout(scanner_form)
+        id_scanner_layout.addWidget(self.scan_id_button)
+        
+        id_scanner_group.setLayout(id_scanner_layout)
+        layout.addWidget(id_scanner_group)
+
         # Submit button for booking the seat
-        self.submit_button = QPushButton("Book Seat", self)
+        self.submit_button = QPushButton(" Book Seat", self)
+        self.submit_button.setIcon(QIcon.fromTheme("document-save", QIcon()))  # PyQt will use system theme icon if available
         self.submit_button.clicked.connect(self.book_seat)
         layout.addWidget(self.submit_button)
 
         # Swap Seat button
-        self.swap_button = QPushButton("Swap Seat", self)
+        self.swap_button = QPushButton(" Swap Seat", self)
+        self.swap_button.setIcon(QIcon.fromTheme("view-refresh", QIcon()))
         self.swap_button.clicked.connect(self.swap_seat)
         layout.addWidget(self.swap_button)
 
         # Show available zone seats
-        self.zone_button = QPushButton("Show Zone Seats", self)
+        self.zone_button = QPushButton(" Show Zone Seats", self)
+        self.zone_button.setIcon(QIcon.fromTheme("view-grid", QIcon()))
         self.zone_button.clicked.connect(self.show_zone_seats)
         layout.addWidget(self.zone_button)
 
         # Send reminder email button
-        self.reminder_button = QPushButton("Schedule Reminder Email", self)
+        self.reminder_button = QPushButton(" Schedule Reminder Email", self)
+        self.reminder_button.setIcon(QIcon.fromTheme("mail-send", QIcon()))
         self.reminder_button.clicked.connect(self.schedule_reminder)
         layout.addWidget(self.reminder_button)
 
@@ -207,7 +236,6 @@ class SeatSelectionWindow(QWidget):
         elif passenger_type == "Tall":
             self.height_input.setVisible(True)
         elif passenger_type == "Eco-Friendly":
-            # For Eco-Friendly, no additional fields needed
             pass
     
     def get_selected_flight(self):
@@ -221,15 +249,56 @@ class SeatSelectionWindow(QWidget):
         row = 0
         col = 0
 
+        # Create airplane layout
         for seat, available in self.available_seats.items():
             seat_button = QPushButton(seat, self)
-            seat_button.setFixedSize(50, 50)
-            seat_button.setEnabled(available)  
+            seat_button.setFixedSize(45, 45)
+            seat_button.setEnabled(available)
+            
+            if seat.endswith(('A', 'D')):  # Window seats
+                if available:
+                    seat_button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #85c1e9;
+                            color: #2c3e50;
+                            border: none;
+                            border-radius: 8px;
+                            font-weight: bold;
+                        }
+                        QPushButton:hover {
+                            background-color: #5dade2;
+                        }
+                    """)
+                else:
+                    seat_button.setStyleSheet("background-color: #d6eaf8; color: #7f8c8d; border: none; border-radius: 8px;")
+            else:  # Middle seats
+                if available:
+                    seat_button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #aed6f1;
+                            color: #2c3e50;
+                            border: none;
+                            border-radius: 8px;
+                            font-weight: bold;
+                        }
+                        QPushButton:hover {
+                            background-color: #7fb3d5;
+                        }
+                    """)
+                else:
+                    seat_button.setStyleSheet("background-color: #ebf5fb; color: #7f8c8d; border: none; border-radius: 8px;")
+            
             seat_button.clicked.connect(self.select_seat)
             self.grid_layout.addWidget(seat_button, row, col)
             
+            if seat.endswith('B'):
+                col += 1
+                aisle = QLabel("", self)
+                aisle.setFixedSize(20, 60)
+                self.grid_layout.addWidget(aisle, row, col)
+                
             col += 1
-            if col > 3:  
+            if col > 4:  # Adjusted for aisle
                 col = 0
                 row += 1
 
@@ -237,14 +306,60 @@ class SeatSelectionWindow(QWidget):
         selected_button = self.sender()  
         selected_seat = selected_button.text()
 
+        # Reset previous selection if any
+        if self.selected_seat:
+            old_seat_button = None
+            for i in range(self.grid_layout.count()):
+                widget = self.grid_layout.itemAt(i).widget()
+                if isinstance(widget, QPushButton) and widget.text() == self.selected_seat:
+                    old_seat_button = widget
+                    break
+            
+            if old_seat_button:
+                # Reset to available styling
+                if self.selected_seat.endswith(('A', 'D')):  # Window seats
+                    old_seat_button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #85c1e9;
+                            color: #2c3e50;
+                            border: none;
+                            border-radius: 8px;
+                            font-weight: bold;
+                        }
+                        QPushButton:hover {
+                            background-color: #5dade2;
+                        }
+                    """)
+                else:  # Middle seats
+                    old_seat_button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #aed6f1;
+                            color: #2c3e50;
+                            border: none;
+                            border-radius: 8px;
+                            font-weight: bold;
+                        }
+                        QPushButton:hover {
+                            background-color: #7fb3d5;
+                        }
+                    """)
+
         if self.available_seats[selected_seat]:  
             self.selected_seat = selected_seat
             self.selected_seat_label.setText(f"Selected Seat: {self.selected_seat}")
-            self.available_seats[selected_seat] = False  
-            selected_button.setEnabled(False)
+            
+            selected_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #2ecc71;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-weight: bold;
+                }
+            """)
         else:
             self.selected_seat_label.setText("Seat already taken, please select another.")
-
+   
     def check_baggage(self):
         passenger_name = self.name_input.text()
         weight = self.baggage_weight.value()
@@ -342,8 +457,16 @@ class SeatSelectionWindow(QWidget):
         else:
             confirmation_text += f"\nNo baggage fee (Weight: {baggage_weight}kg)"
         
+        self.selected_seat_label.setStyleSheet("""
+            background-color: #e8f8f5;
+            border: 1px solid #abebc6;
+            border-radius: 5px;
+            padding: 10px;
+            color: #27ae60;
+            font-weight: bold;
+        """)
         self.selected_seat_label.setText(confirmation_text)
-
+        
     def swap_seat(self):
         self.seat_swapper.assign_seats()
         passenger_data = self.seat_swapper.get_passenger_data()
@@ -378,8 +501,6 @@ class SeatSelectionWindow(QWidget):
             self.selected_seat_label.setText("Please enter your name and email to schedule a reminder.")
             return
         
-        # Initialize the email sender with dummy credentials (for demo purposes)
-        # In a real app, these would be securely stored credentials
         email_sender = ReminderEmailSender(
             sender_email="flightsystem@example.com",
             sender_password="password123"
@@ -397,6 +518,49 @@ class SeatSelectionWindow(QWidget):
         else:
             self.selected_seat_label.setText("Failed to schedule reminder. Please try again later.")
 
+    def scan_id_document(self):
+        """Open a file dialog to select an ID document image and process it"""
+        try:
+            # Open file dialog to select image
+            file_dialog = QFileDialog()
+            file_path, _ = file_dialog.getOpenFileName(
+                self, 
+                "Select ID Document", 
+                "", 
+                "Image Files (*.png *.jpg *.jpeg *.bmp)"
+            )
+            
+            if file_path:
+                # Get selected document type
+                document_type = self.document_type_combo.currentText()
+                
+                # Show processing message
+                self.selected_seat_label.setText("Processing document... Please wait.")
+                self.selected_seat_label.setStyleSheet("""
+                    background-color: #eaf2f8;
+                    border: 1px solid #aed6f1;
+                    border-radius: 5px;
+                    padding: 10px;
+                    color: #2980b9;
+                    font-weight: bold;
+                """)
+                QApplication.processEvents()  # Update UI
+                
+                # Process the document using the function from ID.py
+                from ML.ID import process_id_for_seat_selection
+                process_id_for_seat_selection(self, file_path, document_type)
+                
+        except Exception as e:
+            # Display error
+            self.selected_seat_label.setText(f"Error scanning document: {str(e)}")
+            self.selected_seat_label.setStyleSheet("""
+                background-color: #fdedec;
+                border: 1px solid #f5b7b1;
+                border-radius: 5px;
+                padding: 10px;
+                color: #c0392b;
+                font-weight: bold;
+            """)
 
 class FeedbackWindow(QWidget):
     def __init__(self):
@@ -718,30 +882,392 @@ class CrewManagementWindow(QWidget):
         
         self.crew_table.resizeColumnsToContents()
 
+class AIAssistantWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        
+        self.ai_assistant = AIAssistant()
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout()
+        
+        # Add AI Assistant logo/avatar at the top
+        avatar_label = QLabel()
+        avatar_pixmap = QPixmap(64, 64)  # Create a larger empty pixmap
+        avatar_pixmap.fill(QColor(52, 152, 219))  # Fill with blue color
+        avatar_label.setPixmap(avatar_pixmap)
+        avatar_label.setAlignment(Qt.AlignCenter)
+        avatar_label.setFixedHeight(70)
+        avatar_layout = QHBoxLayout()
+        avatar_layout.addStretch()
+        avatar_layout.addWidget(avatar_label)
+        avatar_layout.addStretch()
+        
+        # Title
+        title_label = QLabel("AI Flight Assistant")
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet("font-size: 22px; font-weight: bold; color: #2980b9; margin-bottom: 15px;")
+        
+        # Header section
+        header_layout = QVBoxLayout()
+        header_layout.addLayout(avatar_layout)
+        header_layout.addWidget(title_label)
+        main_layout.addLayout(header_layout)
+        
+        # Create divider
+        divider = QFrame()
+        divider.setFrameShape(QFrame.HLine)
+        divider.setFrameShadow(QFrame.Sunken)
+        divider.setStyleSheet("background-color: #d1d8e0;")
+        main_layout.addWidget(divider)
+        
+        # Chat history display
+        self.chat_history = QTextEdit()
+        self.chat_history.setReadOnly(True)
+        self.chat_history.setStyleSheet("""
+            background-color: #f8f9fa;
+            border: 1px solid #d6d8db;
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 14px;
+            line-height: 1.5;
+        """)
+        main_layout.addWidget(self.chat_history, stretch=1)  # Give chat history more vertical space
+        
+        # Quick question section (chips)
+        quick_question_frame = QFrame()
+        quick_question_frame.setStyleSheet("""
+            background-color: #f0f4f8;
+            border-radius: 8px;
+            padding: 10px;
+        """)
+        quick_question_layout = QVBoxLayout(quick_question_frame)
+        
+        quick_label = QLabel("Quick Questions:")
+        quick_label.setStyleSheet("font-weight: bold; color: #4a6fa5;")
+        quick_question_layout.addWidget(quick_label)
+        
+        # First row of quick questions
+        quick_row1 = QHBoxLayout()
+        self.q1_button = QPushButton("Help with booking")
+        self.q1_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e1e8f0;
+                color: #4a6fa5;
+                border-radius: 15px;
+                padding: 8px 15px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #d1d8e0;
+            }
+        """)
+        self.q1_button.clicked.connect(lambda: self.handle_quick_question("I need help with booking"))
+        quick_row1.addWidget(self.q1_button)
+        
+        self.q2_button = QPushButton("Flight status")
+        self.q2_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e1e8f0;
+                color: #4a6fa5;
+                border-radius: 15px;
+                padding: 8px 15px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #d1d8e0;
+            }
+        """)
+        self.q2_button.clicked.connect(lambda: self.handle_quick_question("What's my flight status?"))
+        quick_row1.addWidget(self.q2_button)
+        
+        self.q3_button = QPushButton("Baggage info")
+        self.q3_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e1e8f0;
+                color: #4a6fa5;
+                border-radius: 15px;
+                padding: 8px 15px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #d1d8e0;
+            }
+        """)
+        self.q3_button.clicked.connect(lambda: self.handle_quick_question("What are the baggage rules?"))
+        quick_row1.addWidget(self.q3_button)
+        quick_question_layout.addLayout(quick_row1)
+        
+        # Second row of quick questions
+        quick_row2 = QHBoxLayout()
+        self.q4_button = QPushButton("Seat selection help")
+        self.q4_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e1e8f0;
+                color: #4a6fa5;
+                border-radius: 15px;
+                padding: 8px 15px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #d1d8e0;
+            }
+        """)
+        self.q4_button.clicked.connect(lambda: self.handle_quick_question("How do I select a seat?"))
+        quick_row2.addWidget(self.q4_button)
+        
+        self.q5_button = QPushButton("Cancel booking")
+        self.q5_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e1e8f0;
+                color: #4a6fa5;
+                border-radius: 15px;
+                padding: 8px 15px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #d1d8e0;
+            }
+        """)
+        self.q5_button.clicked.connect(lambda: self.handle_quick_question("How do I cancel my booking?"))
+        quick_row2.addWidget(self.q5_button)
+        
+        self.q6_button = QPushButton("Talk to human agent")
+        self.q6_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e1e8f0;
+                color: #4a6fa5;
+                border-radius: 15px;
+                padding: 8px 15px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #d1d8e0;
+            }
+        """)
+        self.q6_button.clicked.connect(lambda: self.handle_quick_question("I want to speak with a human agent"))
+        quick_row2.addWidget(self.q6_button)
+        quick_question_layout.addLayout(quick_row2)
+        
+        main_layout.addWidget(quick_question_frame)
+        
+        # User input and send button in horizontal layout
+        input_frame = QFrame()
+        input_frame.setStyleSheet("""
+            background-color: white;
+            border-radius: 8px;
+            padding: 10px;
+        """)
+        input_layout = QHBoxLayout(input_frame)
+        
+        self.chat_input = QLineEdit()
+        self.chat_input.setPlaceholderText("Type your question here...")
+        self.chat_input.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #d1d8e0;
+                border-radius: 20px;
+                padding: 10px 15px;
+                font-size: 14px;
+                background-color: #f8f9fa;
+            }
+            QLineEdit:focus {
+                border: 1px solid #4a6fa5;
+            }
+        """)
+        self.chat_input.returnPressed.connect(self.send_bot_message)
+        input_layout.addWidget(self.chat_input)
+        
+        self.send_button = QPushButton()
+        self.send_button.setIcon(QIcon.fromTheme("mail-send", QIcon()))
+        self.send_button.setFixedSize(40, 40)
+        self.send_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4a6fa5;
+                border-radius: 20px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #5a7fb5;
+            }
+        """)
+        self.send_button.clicked.connect(self.send_bot_message)
+        input_layout.addWidget(self.send_button)
+        
+        main_layout.addWidget(input_frame)
+        
+        self.setLayout(main_layout)
+        
+        # Initialize the chat with a welcome message
+        self.chat_history.append("<b>AI Assistant:</b> Hello! Welcome to E-JUST Airways. How can I help you with your flight today?")
+
+    def send_bot_message(self):
+        """Send user message to the AI assistant and display response"""
+        user_message = self.chat_input.text().strip()
+        if not user_message:
+            return
+        
+        # Display user message
+        self.chat_history.append(f"<b>You:</b> {user_message}")
+        
+        # Get response from AI assistant
+        response = self.ai_assistant.process_query(user_message)
+        
+        # Display bot response
+        self.chat_history.append(f"<b>AI Assistant:</b> {response}")
+        
+        # Clear input field
+        self.chat_input.clear()
+        
+        # Process any seat related commands in the message
+        self.process_bot_commands(user_message)
+        
+        # Scroll to bottom to see latest messages
+        self.chat_history.verticalScrollBar().setValue(
+            self.chat_history.verticalScrollBar().maximum()
+        )
+
+    def handle_quick_question(self, question):
+        """Handle predefined quick questions"""
+        self.chat_input.setText(question)
+        self.send_bot_message()
+
+    def process_bot_commands(self, message):
+        """Process any seat or flight related commands from the bot conversation"""
+        # This is a stub for now - would need to communicate with other tabs
+        # Will be implemented when integrating with the main application
+        pass
 
 class MainApplication(QWidget):
     def __init__(self):
         super().__init__()
+
+        self.setStyleSheet("""
+            QWidget {
+                font-family: 'Segoe UI', Arial, sans-serif;
+                background-color: #f7f9fc;
+            }
+            QGroupBox {
+                border: 1px solid #dde2eb;
+                border-radius: 6px;
+                margin-top: 12px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                color: #4a6fa5;
+            }
+            QPushButton {
+                background-color: #4a6fa5;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #5a7fb5;
+            }
+            QPushButton:pressed {
+                background-color: #3a5f95;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+            }
+            QLabel {
+                color: #333333;
+            }
+            QLineEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox {
+                border: 1px solid #dde2eb;
+                border-radius: 4px;
+                padding: 6px;
+                background-color: white;
+            }
+            QTableWidget {
+                border: 1px solid #dde2eb;
+                background-color: white;
+                gridline-color: #f0f0f0;
+            }
+            QTabWidget::pane {
+                border: 1px solid #dde2eb;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QTabBar::tab {
+                background-color: #e1e8f0;
+                color: #4a6fa5;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                padding: 8px 16px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: white;
+                border-bottom-color: white;
+            }
+        """)
+
         self.init_ui()
         
     def init_ui(self):
         layout = QVBoxLayout()
-        
-        # Create tab widget
+        layout.setSpacing(15)
+
+        # Add fancy header
+        header = QWidget()
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+
+        app_title = QLabel("E-JUST Airways", self)
+        app_title.setStyleSheet("font-size: 20px; font-weight: bold; color: #2980b9;")
+        header_layout.addWidget(app_title)
+
+        header_layout.addStretch()
+        layout.addWidget(header)
+
+        # Create tab widget with modern styling
         tabs = QTabWidget()
-        
+        tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #dde2eb;
+                border-radius: 6px;
+                padding: 0px;
+                background-color: white;
+            }
+            QTabBar::tab {
+                background-color: #e1e8f0;
+                color: #4a6fa5;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                padding: 5px 15px;
+                margin-right: 4px;
+                font-size: 11px;
+            }
+            QTabBar::tab:selected {
+                background-color: #4a6fa5;
+                color: white;
+            }
+            QTabBar::tab:hover:!selected {
+                background-color: #d1d8e0;
+            }
+        """)        
+
         # Create individual window instances
         self.seat_window = SeatSelectionWindow()
         self.feedback_window = FeedbackWindow()
         self.baggage_window = BaggageInfoWindow()
         self.crew_window = CrewManagementWindow()
-        
+        self.ai_assistant_window = AIAssistantWindow()  # Add our new AI Assistant window
+
         # Add windows to tabs
         tabs.addTab(self.seat_window, "Seat Selection")
         tabs.addTab(self.feedback_window, "Feedback")
         tabs.addTab(self.baggage_window, "Baggage Info")
         tabs.addTab(self.crew_window, "Crew Management")
-        
+        tabs.addTab(self.ai_assistant_window, "AI Assistant")  # Add AI Assistant tab
+
         layout.addWidget(tabs)
         
         self.setLayout(layout)
