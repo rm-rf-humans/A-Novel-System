@@ -1,6 +1,6 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox, QCheckBox, QFileDialog, QTextEdit, QGraphicsDropShadowEffect, QFrame
-from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtWidgets import QApplication, QWidget, QDialog, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox, QCheckBox, QFileDialog, QTextEdit, QGraphicsDropShadowEffect, QFrame, QRadioButton, QProgressBar
+from PyQt5.QtCore import Qt, QSize, QTimer
 from PyQt5.QtGui import QFont, QPalette, QColor, QIcon, QPixmap
 from datetime import datetime, time
 
@@ -137,8 +137,7 @@ class SeatSelectionWindow(QWidget):
         age_layout.addWidget(self.age_input)
         personal_info_layout.addLayout(age_layout)
         
-        self.payment_status = QCheckBox("Payment Completed", self)
-        self.payment_status.setChecked(True)
+        self.payment_status = QCheckBox("Mark as Paid (For Testing)", self)
         self.details_form.addRow("Payment Status:", self.payment_status)
 
         # Baggage information section
@@ -418,12 +417,58 @@ class SeatSelectionWindow(QWidget):
         preference = self.preference_combo.currentText()
         age = self.age_input.value()
         baggage_weight = self.baggage_weight.value()
-        payment_status = self.payment_status.isChecked()
-
+        
         if passenger_name == "":
             self.selected_seat_label.setText("Please enter your name.")
             return
 
+        # Handle baggage fee calculation first
+        baggage = Baggage(passenger_name, baggage_weight)
+        baggage.calculate_fee()
+        baggage_fee = baggage.baggage_fee
+        
+        # Get flight info for display
+        flight_info = f"{selected_flight.flight_id}: {selected_flight.airline} ({selected_flight.source} to {selected_flight.destination})"
+        
+        # Check if payment is being skipped (for testing purposes)
+        if self.payment_status.isChecked():
+            # Bypass payment and proceed directly to booking confirmation
+            self.complete_booking(
+                passenger_name=passenger_name,
+                flight_id=flight_id, 
+                preference=preference,
+                baggage_weight=baggage_weight,
+                baggage_fee=baggage_fee,
+                payment_status=True
+            )
+        else:
+            # Open payment window
+            payment_window = PaymentWindow(
+                parent=self,
+                passenger_name=passenger_name,
+                flight_info=flight_info,
+                seat_id=self.selected_seat,
+                baggage_fee=baggage_fee
+            )
+            
+            # If payment is successful (accepted), proceed with booking
+            if payment_window.exec_() == QDialog.Accepted:
+                self.complete_booking(
+                    passenger_name=passenger_name,
+                    flight_id=flight_id, 
+                    preference=preference,
+                    baggage_weight=baggage_weight,
+                    baggage_fee=baggage_fee,
+                    payment_status=True
+                )
+
+    def complete_booking(self, passenger_name, flight_id, preference, baggage_weight, baggage_fee, payment_status):
+        selected_flight = None
+        for flight in self.flights:
+            if flight.flight_id == flight_id:
+                selected_flight = flight
+                break
+                
         passenger = self.create_appropriate_passenger(
             name=passenger_name, 
             seat=self.selected_seat, 
@@ -438,11 +483,6 @@ class SeatSelectionWindow(QWidget):
             payment_status=payment_status
         )
         ticket_details = ticket_proxy.get_ticket_details()
-        
-        # Handle baggage
-        baggage = Baggage(passenger_name, baggage_weight)
-        baggage.calculate_fee()
-        baggage_fee = baggage.baggage_fee
         
         self.seat_swapper.add_passenger(passenger)
 
@@ -479,6 +519,23 @@ class SeatSelectionWindow(QWidget):
         """)
         self.selected_seat_label.setText(confirmation_text)
         
+        # Mark seat as unavailable
+        self.available_seats[self.selected_seat] = False
+        
+        # Update seat button styles to show as unavailable
+        for i in range(self.grid_layout.count()):
+            widget = self.grid_layout.itemAt(i).widget()
+            if isinstance(widget, QPushButton) and widget.text() == self.selected_seat:
+                if self.selected_seat.endswith(('A', 'D')):  # Window seats
+                    widget.setStyleSheet("background-color: #d6eaf8; color: #7f8c8d; border: none; border-radius: 8px;")
+                else:  # Middle seats
+                    widget.setStyleSheet("background-color: #ebf5fb; color: #7f8c8d; border: none; border-radius: 8px;")
+                widget.setEnabled(False)
+                break
+        
+        # Reset selection
+        self.selected_seat = None
+
     def swap_seat(self):
         self.seat_swapper.assign_seats()
         passenger_data = self.seat_swapper.get_passenger_data()
@@ -1065,7 +1122,6 @@ class AIAssistantWindow(QWidget):
         
         main_layout.addWidget(quick_question_frame)
         
-        # User input and send button in horizontal layout
         input_frame = QFrame()
         input_frame.setStyleSheet("""
             background-color: white;
@@ -1129,36 +1185,204 @@ class AIAssistantWindow(QWidget):
         if not user_message:
             return
         
-        # Display user message
         self.chat_history.append(f"<b>You:</b> {user_message}")
         
-        # Get response from AI assistant
         response = self.ai_assistant.process_query(user_message)
         
-        # Display bot response
         self.chat_history.append(f"<b>AI Assistant:</b> {response}")
         
-        # Clear input field
         self.chat_input.clear()
         
-        # Process any seat related commands in the message
         self.process_bot_commands(user_message)
         
-        # Scroll to bottom to see latest messages
         self.chat_history.verticalScrollBar().setValue(
             self.chat_history.verticalScrollBar().maximum()
         )
 
     def handle_quick_question(self, question):
-        """Handle predefined quick questions"""
         self.chat_input.setText(question)
         self.send_bot_message()
 
     def process_bot_commands(self, message):
-        """Process any seat or flight related commands from the bot conversation"""
-        # This is a stub for now - would need to communicate with other tabs
-        # Will be implemented when integrating with the main application
         pass
+
+class PaymentWindow(QDialog):
+    def __init__(self, parent=None, passenger_name="", flight_info="", seat_id="", baggage_fee=0.0, ticket_price=149.99):
+        super().__init__(parent)
+        self.parent = parent
+        self.passenger_name = passenger_name
+        self.flight_info = flight_info
+        self.seat_id = seat_id
+        self.baggage_fee = baggage_fee
+        self.ticket_price = ticket_price
+        self.payment_completed = False
+        
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Payment Header
+        header_label = QLabel("Payment Processing", self)
+        header_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2980b9;")
+        header_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(header_label)
+        
+        # Order Summary Section
+        summary_group = QGroupBox("Order Summary")
+        summary_layout = QFormLayout()
+        
+        passenger_label = QLabel(self.passenger_name)
+        summary_layout.addRow("Passenger:", passenger_label)
+        
+        flight_label = QLabel(self.flight_info)
+        summary_layout.addRow("Flight:", flight_label)
+        
+        seat_label = QLabel(self.seat_id)
+        summary_layout.addRow("Seat:", seat_label)
+        
+        # Pricing details
+        ticket_price_label = QLabel(f"${self.ticket_price:.2f}")
+        summary_layout.addRow("Ticket Price:", ticket_price_label)
+        
+        baggage_fee_label = QLabel(f"${self.baggage_fee:.2f}")
+        summary_layout.addRow("Baggage Fee:", baggage_fee_label)
+        
+        total_price = self.ticket_price + self.baggage_fee
+        total_label = QLabel(f"${total_price:.2f}")
+        total_label.setStyleSheet("font-weight: bold; color: #16a085;")
+        summary_layout.addRow("Total:", total_label)
+        
+        summary_group.setLayout(summary_layout)
+        layout.addWidget(summary_group)
+        
+        # Payment Method Section
+        payment_group = QGroupBox("Payment Method")
+        payment_layout = QVBoxLayout()
+        
+        # Card type selection
+        card_type_layout = QHBoxLayout()
+        
+        visa_radio = QRadioButton("Visa", self)
+        visa_radio.setChecked(True)
+        mastercard_radio = QRadioButton("MasterCard", self)
+        amex_radio = QRadioButton("American Express", self)
+        
+        card_type_layout.addWidget(visa_radio)
+        card_type_layout.addWidget(mastercard_radio)
+        card_type_layout.addWidget(amex_radio)
+        
+        payment_layout.addLayout(card_type_layout)
+        
+        # Card Information Form
+        card_form = QFormLayout()
+        
+        self.card_number = QLineEdit(self)
+        self.card_number.setPlaceholderText("1234 5678 9012 3456")
+        self.card_number.setInputMask("9999 9999 9999 9999;_")
+        card_form.addRow("Card Number:", self.card_number)
+        
+        expiry_layout = QHBoxLayout()
+        self.expiry_month = QComboBox(self)
+        self.expiry_month.addItems([f"{i:02d}" for i in range(1, 13)])
+        
+        self.expiry_year = QComboBox(self)
+        current_year = datetime.now().year
+        self.expiry_year.addItems([str(current_year + i) for i in range(10)])
+        
+        expiry_layout.addWidget(self.expiry_month)
+        expiry_layout.addWidget(QLabel("/"))
+        expiry_layout.addWidget(self.expiry_year)
+        expiry_layout.addStretch()
+        
+        card_form.addRow("Expiration Date:", expiry_layout)
+        
+        self.cvv_code = QLineEdit(self)
+        self.cvv_code.setPlaceholderText("123")
+        self.cvv_code.setMaxLength(4)
+        self.cvv_code.setFixedWidth(80)
+        self.cvv_code.setEchoMode(QLineEdit.Password)
+        card_form.addRow("CVV:", self.cvv_code)
+        
+        self.cardholder_name = QLineEdit(self)
+        self.cardholder_name.setText(self.passenger_name)
+        card_form.addRow("Cardholder Name:", self.cardholder_name)
+        
+        payment_layout.addLayout(card_form)
+        payment_group.setLayout(payment_layout)
+        layout.addWidget(payment_group)
+        
+        # Processing Status
+        self.status_label = QLabel("", self)
+        self.status_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.status_label)
+        
+        # Progress Bar (initially hidden)
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setRange(0, 0)  # Indeterminate progress
+        self.progress_bar.setVisible(False)
+        layout.addWidget(self.progress_bar)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        self.cancel_button = QPushButton("Cancel", self)
+        self.cancel_button.clicked.connect(self.reject)
+        
+        self.process_button = QPushButton("Process Payment", self)
+        self.process_button.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
+        self.process_button.clicked.connect(self.process_payment)
+        
+        button_layout.addWidget(self.cancel_button)
+        button_layout.addWidget(self.process_button)
+        
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+        self.setWindowTitle("Payment Processing")
+        self.setMinimumWidth(450)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setModal(True)
+    
+    def process_payment(self):
+        if not self.card_number.text().replace(" ", "").isdigit() or len(self.card_number.text().replace(" ", "")) < 16:
+            self.status_label.setText("Invalid card number")
+            self.status_label.setStyleSheet("color: #c0392b;")
+            return
+            
+        if not self.cvv_code.text().isdigit() or len(self.cvv_code.text()) < 3:
+            self.status_label.setText("Invalid CVV code")
+            self.status_label.setStyleSheet("color: #c0392b;")
+            return
+            
+        if not self.cardholder_name.text():
+            self.status_label.setText("Please enter cardholder name")
+            self.status_label.setStyleSheet("color: #c0392b;")
+            return
+        
+        self.process_button.setEnabled(False)
+        self.cancel_button.setEnabled(False)
+        
+        self.status_label.setText("Processing payment...")
+        self.status_label.setStyleSheet("color: #7f8c8d;")
+        self.progress_bar.setVisible(True)
+        
+        QTimer.singleShot(2000, self.finish_payment)
+    
+    def finish_payment(self):
+        self.progress_bar.setVisible(False)
+        self.status_label.setText("Payment Successful!")
+        self.status_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+        
+        self.payment_completed = True
+        
+        self.cancel_button.setText("Close")
+        self.cancel_button.setEnabled(True)
+        
+        self.process_button.setVisible(False)
+        
+        QTimer.singleShot(1000, lambda: self.accept())
 
 class MainApplication(QWidget):
     def __init__(self):
