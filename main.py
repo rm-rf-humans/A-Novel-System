@@ -10,7 +10,7 @@ from datetime import datetime, time
 from passengers.PassengerClass import Passenger as BasePassenger
 from passengers.ticket import Ticket, TicketProxy
 from flights.Flight import Flight, FlightScheduleProxy
-from flights.CrewMember import CrewMember, CrewRegistry
+from flights.CrewMember import CrewMember, CrewRegistry, CrewRegistryProxy, User
 from utilities.Feedback import Feedback
 from utilities.ReminderEmailSender import ReminderEmailSender
 from utilities.seat_swap import Passenger, Socializer, TallPassenger, EcoPassenger, SeatSwapper 
@@ -676,7 +676,6 @@ class FeedbackWindow(QWidget):
             self.feedback_input.setText("Thank you for your feedback!")
     
     def handle_seat_change(self):
-        """Handle seat change request"""
         ticket_id = self.ticket_id_input.text().strip()
         new_seat = self.new_seat_input.text().strip()
         
@@ -748,23 +747,30 @@ class BaggageInfoWindow(QWidget):
 
 
 class CrewManagementWindow(QWidget):
-    def __init__(self):
+    def __init__(self, current_user=None):
         super().__init__()
-        self.crew_registry = CrewRegistry()
-
+        
+        self.current_user = current_user or User("guest", "guest")
+        
+        self.registry_proxy = CrewRegistryProxy(self.current_user)
+        
         self.init_sample_data()
         self.init_ui()
         
     def init_sample_data(self):
-        try:
-            crew1 = CrewMember(101, "John Smith", "Pilot", "john.smith@airline.com")
-            crew2 = CrewMember(102, "Emily Jones", "Flight Attendant", "emily.jones@airline.com")
-            crew3 = CrewMember(103, "Carlos Rodriguez", "Co-Pilot", "carlos.rodriguez@airline.com")
-        except Exception as e:
-            print(f"Error creating sample crew members: {e}")
+        if self.current_user.role == "admin":
+            try:
+                crew1 = CrewMember(101, "John Smith", "Pilot", "john.smith@airline.com")
+                crew2 = CrewMember(102, "Emily Jones", "Flight Attendant", "emily.jones@airline.com")
+                crew3 = CrewMember(103, "Carlos Rodriguez", "Co-Pilot", "carlos.rodriguez@airline.com")
+            except Exception as e:
+                print(f"Error creating sample crew members: {e}")
     
     def init_ui(self):
         layout = QVBoxLayout()
+        
+        self.user_info_label = QLabel(f"Logged in as: {self.current_user.username} ({self.current_user.role})", self)
+        layout.addWidget(self.user_info_label)
         
         self.title_label = QLabel("Crew Management", self)
         self.title_label.setAlignment(Qt.AlignCenter)
@@ -791,6 +797,14 @@ class CrewManagementWindow(QWidget):
         self.add_crew_button = QPushButton("Add Crew Member", self)
         self.add_crew_button.clicked.connect(self.add_crew_member)
         form_layout.addRow(self.add_crew_button)
+        
+        if not self.current_user.has_permission("add"):
+            self.crew_id_input.setEnabled(False)
+            self.crew_name_input.setEnabled(False)
+            self.crew_role_combo.setEnabled(False)
+            self.crew_contact_input.setEnabled(False)
+            self.add_crew_button.setEnabled(False)
+            form_group.setTitle("Add New Crew Member (Requires Admin Permission)")
         
         form_group.setLayout(form_layout)
         layout.addWidget(form_group)
@@ -827,6 +841,14 @@ class CrewManagementWindow(QWidget):
         self.update_status_button.clicked.connect(self.update_crew_status)
         assignment_layout.addRow(self.update_status_button)
         
+        # Disable update controls if user doesn't have update permission
+        if not self.current_user.has_permission("update"):
+            self.flight_id_input.setEnabled(False)
+            self.assign_flight_button.setEnabled(False)
+            self.status_combo.setEnabled(False)
+            self.update_status_button.setEnabled(False)
+            assignment_group.setTitle("Update Crew (Requires Staff or Admin Permission)")
+        
         assignment_group.setLayout(assignment_layout)
         layout.addWidget(assignment_group)
         
@@ -835,6 +857,26 @@ class CrewManagementWindow(QWidget):
         self.refresh_button.clicked.connect(self.refresh_crew_list)
         layout.addWidget(self.refresh_button)
         
+        # Add a user role switcher for testing (normally this would be handled by login)
+        if True:  # Testing mode
+            role_group = QGroupBox("Switch User Role (For Testing)")
+            role_layout = QHBoxLayout()
+            
+            self.guest_button = QPushButton("Guest", self)
+            self.guest_button.clicked.connect(lambda: self.switch_user_role("guest"))
+            role_layout.addWidget(self.guest_button)
+            
+            self.staff_button = QPushButton("Staff", self)
+            self.staff_button.clicked.connect(lambda: self.switch_user_role("staff"))
+            role_layout.addWidget(self.staff_button)
+            
+            self.admin_button = QPushButton("Admin", self)
+            self.admin_button.clicked.connect(lambda: self.switch_user_role("admin"))
+            role_layout.addWidget(self.admin_button)
+            
+            role_group.setLayout(role_layout)
+            layout.addWidget(role_group)
+        
         self.setLayout(layout)
         self.setWindowTitle('Crew Management')
         self.setGeometry(100, 100, 600, 700)
@@ -842,11 +884,47 @@ class CrewManagementWindow(QWidget):
         # Initial population of the table
         self.refresh_crew_list()
     
+    def switch_user_role(self, role):
+        """Change the current user's role for testing"""
+        self.current_user = User(f"test_{role}", role)
+        self.registry_proxy = CrewRegistryProxy(self.current_user)
+        self.user_info_label.setText(f"Logged in as: {self.current_user.username} ({self.current_user.role})")
+        
+        # Update UI based on new permissions
+        has_add = self.current_user.has_permission("add")
+        self.crew_id_input.setEnabled(has_add)
+        self.crew_name_input.setEnabled(has_add)
+        self.crew_role_combo.setEnabled(has_add)
+        self.crew_contact_input.setEnabled(has_add)
+        self.add_crew_button.setEnabled(has_add)
+        
+        has_update = self.current_user.has_permission("update")
+        self.flight_id_input.setEnabled(has_update)
+        self.assign_flight_button.setEnabled(has_update)
+        self.status_combo.setEnabled(has_update)
+        self.update_status_button.setEnabled(has_update)
+        
+        # Refresh the list through the proxy
+        self.refresh_crew_list()
+        
+        QMessageBox.information(self, "Role Changed", f"User role changed to {role}")
+    
     def update_crew_combo(self):
         """Update the crew selection dropdown"""
         self.crew_select_combo.clear()
-        for crew in self.crew_registry.all_crew():
-            self.crew_select_combo.addItem(f"{crew.crew_id}: {crew.name}", crew.crew_id)
+        
+        try:
+            for crew in self.registry_proxy.all_crew():
+                # Handle both object and dictionary results from proxy
+                if isinstance(crew, dict):
+                    crew_id = crew["crew_id"]
+                    name = crew["name"]
+                else:
+                    crew_id = crew.crew_id
+                    name = crew.name
+                self.crew_select_combo.addItem(f"{crew_id}: {name}", crew_id)
+        except PermissionError as e:
+            QMessageBox.warning(self, "Permission Error", str(e))
     
     def add_crew_member(self):
         """Add a new crew member"""
@@ -859,17 +937,25 @@ class CrewManagementWindow(QWidget):
             if not name:
                 raise ValueError("Name cannot be empty")
             
+            # Create the crew member directly - it will self-register
             new_crew = CrewMember(crew_id, name, role, contact)
-            QMessageBox.information(self, "Success", f"Added crew member: {name}")
             
-            # Clear inputs
-            self.crew_name_input.clear()
-            self.crew_contact_input.clear()
-            self.crew_id_input.setValue(self.crew_id_input.value() + 1)
-            
-            # Refresh displays
-            self.refresh_crew_list()
-            self.update_crew_combo()
+            # But check if we can see it through the proxy
+            try:
+                self.registry_proxy.get_crew_member(crew_id)
+                QMessageBox.information(self, "Success", f"Added crew member: {name}")
+                
+                # Clear inputs
+                self.crew_name_input.clear()
+                self.crew_contact_input.clear()
+                self.crew_id_input.setValue(self.crew_id_input.value() + 1)
+                
+                # Refresh displays
+                self.refresh_crew_list()
+                self.update_crew_combo()
+            except PermissionError as e:
+                QMessageBox.warning(self, "Permission Error", 
+                                   "Created crew member but you don't have permission to view it: " + str(e))
             
         except Exception as e:
             QMessageBox.warning(self, "Error", str(e))
@@ -887,13 +973,27 @@ class CrewManagementWindow(QWidget):
             return
         
         try:
-            crew_member = self.crew_registry.get_crew_member(crew_id)
+            crew_member = self.registry_proxy.get_crew_member(crew_id)
             if crew_member:
-                crew_member.assign_flight(flight_id)
+                # Check if flight_details are supported (overloaded method)
+                try:
+                    # First try with flight details dictionary (new overloaded method)
+                    flight_details = {
+                        'id': flight_id,
+                        'departure': '08:00',  # Example additional data
+                        'arrival': '10:30'     # Example additional data
+                    }
+                    crew_member.assign_flight(flight_details)
+                except (TypeError, AttributeError):
+                    # Fall back to original method if overloaded one fails
+                    crew_member.assign_flight(flight_id)
+                
                 QMessageBox.information(self, "Success", f"Assigned {crew_member.name} to flight {flight_id}")
                 self.refresh_crew_list()
             else:
                 QMessageBox.warning(self, "Error", "Crew member not found")
+        except PermissionError as e:
+            QMessageBox.warning(self, "Permission Error", str(e))
         except Exception as e:
             QMessageBox.warning(self, "Error", str(e))
     
@@ -906,29 +1006,60 @@ class CrewManagementWindow(QWidget):
         new_status = self.status_combo.currentText()
         
         try:
-            crew_member = self.crew_registry.get_crew_member(crew_id)
+            # Get the crew member through the proxy
+            crew_member = self.registry_proxy.get_crew_member(crew_id)
             if crew_member:
-                crew_member.update_status(new_status)
-                QMessageBox.information(self, "Success", f"Updated {crew_member.name}'s status to {new_status}")
+                # Use the update_crew_member_status method from the proxy
+                try:
+                    # First try calling through the proxy
+                    self.registry_proxy.update_crew_member_status(crew_id, new_status)
+                    QMessageBox.information(self, "Success", f"Updated status to {new_status}")
+                except AttributeError:
+                    # Fall back to direct call if proxy doesn't support it
+                    crew_member.update_status(new_status)
+                    QMessageBox.information(self, "Success", f"Updated {crew_member.name}'s status to {new_status}")
+                
                 self.refresh_crew_list()
             else:
                 QMessageBox.warning(self, "Error", "Crew member not found")
+        except PermissionError as e:
+            QMessageBox.warning(self, "Permission Error", str(e))
         except Exception as e:
             QMessageBox.warning(self, "Error", str(e))
     
     def refresh_crew_list(self):
-        crew_list = self.crew_registry.all_crew()
-        self.crew_table.setRowCount(len(crew_list))
-        
-        for row, crew in enumerate(crew_list):
-            self.crew_table.setItem(row, 0, QTableWidgetItem(str(crew.crew_id)))
-            self.crew_table.setItem(row, 1, QTableWidgetItem(crew.name))
-            self.crew_table.setItem(row, 2, QTableWidgetItem(crew.role))
-            self.crew_table.setItem(row, 3, QTableWidgetItem(crew.contact_info))
-            self.crew_table.setItem(row, 4, QTableWidgetItem(crew.assigned_flight or "None"))
-            self.crew_table.setItem(row, 5, QTableWidgetItem(crew.status))
-        
-        self.crew_table.resizeColumnsToContents()
+        try:
+            crew_list = self.registry_proxy.all_crew()
+            self.crew_table.setRowCount(len(crew_list))
+            
+            for row, crew in enumerate(crew_list):
+                # Handle both object and dictionary results from proxy
+                if isinstance(crew, dict):
+                    # Dictionary format
+                    self.crew_table.setItem(row, 0, QTableWidgetItem(str(crew["crew_id"])))
+                    self.crew_table.setItem(row, 1, QTableWidgetItem(crew["name"]))
+                    self.crew_table.setItem(row, 2, QTableWidgetItem(crew["role"]))
+                    self.crew_table.setItem(row, 3, QTableWidgetItem(crew["contact_info"]))
+                    self.crew_table.setItem(row, 4, QTableWidgetItem(crew.get("assigned_flight") or "None"))
+                    self.crew_table.setItem(row, 5, QTableWidgetItem(crew.get("status", "Unknown")))
+                else:
+                    # Object format
+                    self.crew_table.setItem(row, 0, QTableWidgetItem(str(crew.crew_id)))
+                    self.crew_table.setItem(row, 1, QTableWidgetItem(crew.name))
+                    self.crew_table.setItem(row, 2, QTableWidgetItem(crew.role))
+                    self.crew_table.setItem(row, 3, QTableWidgetItem(crew.contact_info))
+                    self.crew_table.setItem(row, 4, QTableWidgetItem(crew.assigned_flight or "None"))
+                    self.crew_table.setItem(row, 5, QTableWidgetItem(crew.status))
+            
+            self.crew_table.resizeColumnsToContents()
+            self.update_crew_combo()
+            
+        except PermissionError as e:
+            # Clear the table if no permission
+            self.crew_table.setRowCount(0)
+            QMessageBox.warning(self, "Permission Error", str(e))
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to refresh crew list: {str(e)}")
 
 class AIAssistantWindow(QWidget):
     def __init__(self, seat_selection_window):
@@ -996,7 +1127,6 @@ class AIAssistantWindow(QWidget):
         quick_label.setStyleSheet("font-weight: bold; color: #4a6fa5;")
         quick_question_layout.addWidget(quick_label)
         
-        # First row of quick questions
         quick_row1 = QHBoxLayout()
         self.q1_button = QPushButton("Help with booking")
         self.q1_button.setStyleSheet("""
@@ -1047,7 +1177,6 @@ class AIAssistantWindow(QWidget):
         quick_row1.addWidget(self.q3_button)
         quick_question_layout.addLayout(quick_row1)
         
-        # Second row of quick questions
         quick_row2 = QHBoxLayout()
         self.q4_button = QPushButton("Seat selection help")
         self.q4_button.setStyleSheet("""
@@ -1145,7 +1274,6 @@ class AIAssistantWindow(QWidget):
         
         self.setLayout(main_layout)
         
-        # Initialize the chat with a welcome message
         self.chat_history.append("<b>AI Assistant:</b> Hello! Welcome to E-JUST Airways. How can I help you with your flight today?")
 
     def send_bot_message(self):
@@ -1196,7 +1324,6 @@ class PaymentWindow(QDialog):
         self.ticket_price = ticket_price
         self.payment_completed = False
         
-        # Network configuration
         self.host = host
         self.port = port
         
@@ -1206,13 +1333,11 @@ class PaymentWindow(QDialog):
         layout = QVBoxLayout()
         layout.setContentsMargins(20, 20, 20, 20)
         
-        # Payment Header
         header_label = QLabel("Payment Processing", self)
         header_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2980b9;")
         header_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(header_label)
         
-        # Order Summary Section
         summary_group = QGroupBox("Order Summary")
         summary_layout = QFormLayout()
         
@@ -1225,7 +1350,6 @@ class PaymentWindow(QDialog):
         seat_label = QLabel(self.seat_id)
         summary_layout.addRow("Seat:", seat_label)
         
-        # Pricing details
         ticket_price_label = QLabel(f"${self.ticket_price:.2f}")
         summary_layout.addRow("Ticket Price:", ticket_price_label)
         
@@ -1240,11 +1364,9 @@ class PaymentWindow(QDialog):
         summary_group.setLayout(summary_layout)
         layout.addWidget(summary_group)
         
-        # Payment Method Section
         payment_group = QGroupBox("Payment Method")
         payment_layout = QVBoxLayout()
         
-        # Card type selection
         card_type_layout = QHBoxLayout()
         
         self.visa_radio = QRadioButton("Visa", self)
@@ -1258,7 +1380,6 @@ class PaymentWindow(QDialog):
         
         payment_layout.addLayout(card_type_layout)
         
-        # Card Information Form
         card_form = QFormLayout()
         
         self.card_number = QLineEdit(self)
@@ -1296,14 +1417,12 @@ class PaymentWindow(QDialog):
         payment_group.setLayout(payment_layout)
         layout.addWidget(payment_group)
         
-        # Processing Status
         self.status_label = QLabel("", self)
         self.status_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status_label)
         
-        # Progress Bar (initially hidden)
         self.progress_bar = QProgressBar(self)
-        self.progress_bar.setRange(0, 0)  # Indeterminate progress
+        self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
         
@@ -1368,28 +1487,23 @@ class PaymentWindow(QDialog):
         return payment_data
     
     def send_payment_data(self, payment_data):
-        """Send payment data to the server with proper protocol"""
         client_socket = None
         try:
-            # Create socket with timeout
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.settimeout(15)  # 15 second timeout
+            client_socket.settimeout(15)
             
             print(f"Connecting to {self.host}:{self.port}...")
             client_socket.connect((self.host, self.port))
             print("Connected successfully!")
             
-            # Convert to JSON
             json_data = json.dumps(payment_data, indent=2)
             message = json_data.encode('utf-8')
             
             print(f"Sending {len(message)} bytes...")
-            # Send data length first, then the data
             client_socket.sendall(len(message).to_bytes(4, byteorder='big'))
             client_socket.sendall(message)
             print("Data sent successfully!")
             
-            # Receive response length first
             print("Waiting for response length...")
             response_length_bytes = client_socket.recv(4)
             if len(response_length_bytes) != 4:
@@ -1398,7 +1512,6 @@ class PaymentWindow(QDialog):
             response_length = int.from_bytes(response_length_bytes, byteorder='big')
             print(f"Expecting response of {response_length} bytes...")
             
-            # Receive the actual response
             response_data = b''
             while len(response_data) < response_length:
                 remaining = response_length - len(response_data)
@@ -1448,17 +1561,15 @@ class PaymentWindow(QDialog):
         self.status_label.setStyleSheet("color: #7f8c8d;")
         self.progress_bar.setVisible(True)
         
-        # Create worker thread for network operation
         self.worker_thread = PaymentWorkerThread(self)
         self.worker_thread.payment_response.connect(self.handle_payment_response)
         self.worker_thread.start()
     
     def handle_payment_response(self, response):
-        """Handle the server response"""
         self.progress_bar.setVisible(False)
         
         if response.startswith("ERROR:"):
-            self.status_label.setText(f"Payment Failed: {response[7:]}")  # Remove "ERROR: " prefix
+            self.status_label.setText(f"Payment Failed: {response[7:]}")
             self.status_label.setStyleSheet("color: #c0392b;")
             self.process_button.setEnabled(True)
             self.cancel_button.setEnabled(True)
