@@ -1,5 +1,6 @@
+from multipledispatch import dispatch
+
 class CrewRegistry:
-    """Singleton registry for crew members"""
     _instance = None
     _crew_members = {}
 
@@ -8,20 +9,39 @@ class CrewRegistry:
             cls._instance = super().__new__(cls)
         return cls._instance
 
+    @dispatch(object)
     def add_crew_member(self, crew_member):
         self._crew_members[crew_member.crew_id] = crew_member
+        
+    @dispatch(dict)
+    def add_crew_member(self, crew_data):
+        if 'crew_id' not in crew_data:
+            raise ValueError("crew_data must contain 'crew_id' key")
+        self._crew_members[crew_data['crew_id']] = crew_data
 
     def get_crew_member(self, crew_id):
         return self._crew_members.get(crew_id)
 
     def all_crew(self):
         return list(self._crew_members.values())
+    
+    def __str__(self):
+        return f"CrewRegistry with {len(self._crew_members)} crew members"
+    
+    @dispatch()
+    def clear(self):
+        self._crew_members.clear()
+        
+    @dispatch(int)
+    def clear(self, crew_id):
+        self._crew_members.pop(crew_id, None)
 
 class User:
     def __init__(self, username, role):
         self.username = username
         self.role = role
 
+    @dispatch(str)
     def has_permission(self, action):
         permissions = {
             "admin": ["add", "remove", "view", "update"],
@@ -30,16 +50,35 @@ class User:
         }
         return action in permissions.get(self.role, [])
     
+    @dispatch(list)
+    def has_permission(self, actions):
+        permissions = {
+            "admin": ["add", "remove", "view", "update"],
+            "staff": ["view", "update"],
+            "guest": ["view"]
+        }
+        role_permissions = permissions.get(self.role, [])
+        return all(action in role_permissions for action in actions)
+            
+    def __str__(self):
+        return f"User(username='{self.username}', role='{self.role}')"
 
 class CrewRegistryProxy:
     def __init__(self, user):
         self.user = user
         self.registry = CrewRegistry()
 
+    @dispatch(object)
     def add_crew_member(self, crew_member):
         if not self.user.has_permission("add"):
             raise PermissionError(f"User '{self.user.username}' does not have permission to add crew members.")
         self.registry.add_crew_member(crew_member)
+    
+    @dispatch(dict)
+    def add_crew_member(self, crew_data):
+        if not self.user.has_permission("add"):
+            raise PermissionError(f"User '{self.user.username}' does not have permission to add crew members.")
+        self.registry.add_crew_member(crew_data)
 
     def remove_crew_member(self, crew_id):
         if not self.user.has_permission("remove"):
@@ -64,6 +103,9 @@ class CrewRegistryProxy:
             member.update_status(status)
         else:
             raise ValueError(f"No crew member found with ID {crew_id}")
+    
+    def __str__(self):
+        return f"CrewRegistryProxy(user='{self.user.username}')"
 
 class CrewMember:
     def __init__(self, crew_id, name, role, contact_info):
@@ -84,27 +126,56 @@ class CrewMember:
         # Register this crew member
         CrewRegistry().add_crew_member(self)
 
+    @dispatch(str)
     def assign_flight(self, flight_id):
-        if not isinstance(flight_id, str):
-            raise TypeError("Flight ID must be a string.")
         if self.status == "On Duty":
             raise Exception(f"{self.name} is already assigned to flight {self.assigned_flight}.")
             
         self.assigned_flight = flight_id
         self.status = "On Duty"
+        
+    @dispatch(dict)
+    def assign_flight(self, flight_details):
+        if 'id' not in flight_details:
+            raise ValueError("flight_details must contain 'id' key")
+            
+        flight_id = flight_details['id']
+        if not isinstance(flight_id, str):
+            raise TypeError("Flight ID must be a string.")
+            
+        if self.status == "On Duty":
+            raise Exception(f"{self.name} is already assigned to flight {self.assigned_flight}.")
+            
+        self.assigned_flight = flight_id
+        self.status = "On Duty"
+        
+        if hasattr(self, 'flight_details'):
+            self.flight_details = flight_details
+        else:
+            self.flight_details = flight_details
 
     def view_schedule(self):
         return self.assigned_flight or "No assigned flight."
 
+    @dispatch(str)
     def update_status(self, new_status):
         valid_statuses = ["Available", "On Duty", "Resting", "Boarding Passengers"]
         if new_status not in valid_statuses:
             raise ValueError(f"'{new_status}' is not a valid status. Valid options are: {valid_statuses}")
             
         self.status = new_status
+        
+    @dispatch(str, dict)
+    def update_status(self, new_status, details):
+        valid_statuses = ["Available", "On Duty", "Resting", "Boarding Passengers"]
+        if new_status not in valid_statuses:
+            raise ValueError(f"'{new_status}' is not a valid status. Valid options are: {valid_statuses}")
+            
+        self.status = new_status
+        self.status_details = details
 
     def to_dict(self):
-        return {
+        result = {
             "crew_id": self.crew_id,
             "name": self.name,
             "role": self.role,
@@ -112,3 +183,18 @@ class CrewMember:
             "assigned_flight": self.assigned_flight,
             "status": self.status
         }
+        
+        if hasattr(self, 'status_details'):
+            result["status_details"] = self.status_details
+        if hasattr(self, 'flight_details'):
+            result["flight_details"] = self.flight_details
+            
+        return result
+    
+    def __str__(self):
+        return f"CrewMember(id={self.crew_id}, name='{self.name}', role='{self.role}', status='{self.status}')"
+    
+    def __eq__(self, other):
+        if not isinstance(other, CrewMember):
+            return False
+        return self.crew_id == other.crew_id
