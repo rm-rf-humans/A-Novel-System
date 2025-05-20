@@ -1,6 +1,9 @@
 import sys
+import threading
+import socket
+import json
 from PyQt5.QtWidgets import QApplication, QWidget, QDialog, QGridLayout, QPushButton, QLabel, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QHBoxLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QTabWidget, QDateEdit, QTableWidget, QTableWidgetItem, QMessageBox, QCheckBox, QFileDialog, QTextEdit, QGraphicsDropShadowEffect, QFrame, QRadioButton, QProgressBar
-from PyQt5.QtCore import Qt, QSize, QTimer
+from PyQt5.QtCore import Qt, QSize, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QPalette, QColor, QIcon, QPixmap
 from datetime import datetime, time
 
@@ -13,6 +16,7 @@ from utilities.ReminderEmailSender import ReminderEmailSender
 from utilities.seat_swap import Passenger, Socializer, TallPassenger, EcoPassenger, SeatSwapper 
 from baggage.Baggage import Baggage
 from ML.Bot import AIAssistant
+from Networking.payment_server import PaymentServer
 
 class SeatSelectionWindow(QWidget):
     def __init__(self):
@@ -53,17 +57,14 @@ class SeatSelectionWindow(QWidget):
         self.title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.title_label)
 
-        # Seat Map Layout (Grid)
         self.grid_layout = QGridLayout()
         self.create_seat_buttons()
         
         layout.addLayout(self.grid_layout)
 
-        # Display selected seat
         self.selected_seat_label = QLabel("Selected Seat: None", self)
         layout.addWidget(self.selected_seat_label)
 
-        # Passenger Type Selection
         passenger_group = QGroupBox("Passenger Type")
         passenger_layout = QFormLayout()
         
@@ -72,7 +73,6 @@ class SeatSelectionWindow(QWidget):
         self.passenger_type.currentIndexChanged.connect(self.update_passenger_options)
         passenger_layout.addRow("Type:", self.passenger_type)
         
-        # Additional fields for passenger types
         self.interest_input = QLineEdit(self)
         self.interest_input.setPlaceholderText("Enter your interests")
         self.interest_input.setVisible(False)
@@ -87,7 +87,6 @@ class SeatSelectionWindow(QWidget):
         passenger_group.setLayout(passenger_layout)
         layout.addWidget(passenger_group)
 
-        # Seat preference selection
         preference_group = QGroupBox("Seating Preference")
         preference_layout = QFormLayout()
         
@@ -137,10 +136,9 @@ class SeatSelectionWindow(QWidget):
         age_layout.addWidget(self.age_input)
         personal_info_layout.addLayout(age_layout)
         
-        self.payment_status = QCheckBox("Mark as Paid (For Testing)", self)
-        self.details_form.addRow("Payment Status:", self.payment_status)
+        self.payment_status = QCheckBox("Mark as paid", self)
+        self.details_form.addRow("Payment status:", self.payment_status)
 
-        # Baggage information section
         baggage_group = QGroupBox("Baggage Information")
         baggage_layout = QFormLayout()
         
@@ -163,7 +161,6 @@ class SeatSelectionWindow(QWidget):
         layout.addLayout(self.details_form)
         layout.addWidget(baggage_group)
 
-        # ID Scanner Section
         id_scanner_group = QGroupBox("ID Scanner")
         id_scanner_layout = QVBoxLayout()
         
@@ -260,7 +257,7 @@ class SeatSelectionWindow(QWidget):
             seat_button.setFixedSize(45, 45)
             seat_button.setEnabled(available)
             
-            if seat.endswith(('A', 'D')):  # Window seats
+            if seat.endswith(('A', 'D')):
                 if available:
                     seat_button.setStyleSheet("""
                         QPushButton {
@@ -276,7 +273,7 @@ class SeatSelectionWindow(QWidget):
                     """)
                 else:
                     seat_button.setStyleSheet("background-color: #d6eaf8; color: #7f8c8d; border: none; border-radius: 8px;")
-            else:  # Middle seats
+            else:
                 if available:
                     seat_button.setStyleSheet("""
                         QPushButton {
@@ -303,7 +300,7 @@ class SeatSelectionWindow(QWidget):
                 self.grid_layout.addWidget(aisle, row, col)
                 
             col += 1
-            if col > 4:  # Adjusted for aisle
+            if col > 4:
                 col = 0
                 row += 1
 
@@ -311,7 +308,6 @@ class SeatSelectionWindow(QWidget):
         selected_button = self.sender()  
         selected_seat = selected_button.text()
 
-        # Reset previous selection if any
         if self.selected_seat:
             old_seat_button = None
             for i in range(self.grid_layout.count()):
@@ -321,8 +317,7 @@ class SeatSelectionWindow(QWidget):
                     break
             
             if old_seat_button:
-                # Reset to available styling
-                if self.selected_seat.endswith(('A', 'D')):  # Window seats
+                if self.selected_seat.endswith(('A', 'D')):
                     old_seat_button.setStyleSheet("""
                         QPushButton {
                             background-color: #85c1e9;
@@ -335,7 +330,7 @@ class SeatSelectionWindow(QWidget):
                             background-color: #5dade2;
                         }
                     """)
-                else:  # Middle seats
+                else:
                     old_seat_button.setStyleSheet("""
                         QPushButton {
                             background-color: #aed6f1;
@@ -365,7 +360,6 @@ class SeatSelectionWindow(QWidget):
         else:
             self.selected_seat_label.setText("Seat already taken, please select another.")
     
-    # creating function to return the information of the flight, id, and name
     def get_flight_info(self):
         flight_id = self.flight_combo.currentData()
         for flight in self.flights:
@@ -381,10 +375,8 @@ class SeatSelectionWindow(QWidget):
             self.baggage_status.setText("Please enter your name first.")
             return
         
-        # Create baggage instance
         baggage = Baggage(passenger_name, weight)
         
-        # Calculate fee
         baggage.calculate_fee()
         
         self.baggage_status.setText(baggage.get_fee_summary())
@@ -422,17 +414,13 @@ class SeatSelectionWindow(QWidget):
             self.selected_seat_label.setText("Please enter your name.")
             return
 
-        # Handle baggage fee calculation first
         baggage = Baggage(passenger_name, baggage_weight)
         baggage.calculate_fee()
         baggage_fee = baggage.baggage_fee
         
-        # Get flight info for display
         flight_info = f"{selected_flight.flight_id}: {selected_flight.airline} ({selected_flight.source} to {selected_flight.destination})"
         
-        # Check if payment is being skipped (for testing purposes)
         if self.payment_status.isChecked():
-            # Bypass payment and proceed directly to booking confirmation
             self.complete_booking(
                 passenger_name=passenger_name,
                 flight_id=flight_id, 
@@ -442,7 +430,6 @@ class SeatSelectionWindow(QWidget):
                 payment_status=True
             )
         else:
-            # Open payment window
             payment_window = PaymentWindow(
                 parent=self,
                 passenger_name=passenger_name,
@@ -451,7 +438,6 @@ class SeatSelectionWindow(QWidget):
                 baggage_fee=baggage_fee
             )
             
-            # If payment is successful (accepted), proceed with booking
             if payment_window.exec_() == QDialog.Accepted:
                 self.complete_booking(
                     passenger_name=passenger_name,
@@ -706,7 +692,6 @@ class FeedbackWindow(QWidget):
         self.selected_seat_label.setText(result)
 
     def handle_ticket_cancel(self):
-        """Handle ticket cancellation request"""
         ticket_id = self.ticket_id_input.text().strip()
         
         if not ticket_id:
@@ -766,12 +751,11 @@ class CrewManagementWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.crew_registry = CrewRegistry()
-        # Initialize with some sample crew members
+
         self.init_sample_data()
         self.init_ui()
         
     def init_sample_data(self):
-        """Initialize with sample crew members for demonstration"""
         try:
             crew1 = CrewMember(101, "John Smith", "Pilot", "john.smith@airline.com")
             crew2 = CrewMember(102, "Emily Jones", "Flight Attendant", "emily.jones@airline.com")
@@ -782,12 +766,10 @@ class CrewManagementWindow(QWidget):
     def init_ui(self):
         layout = QVBoxLayout()
         
-        # Title
         self.title_label = QLabel("Crew Management", self)
         self.title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.title_label)
         
-        # Form for adding new crew members
         form_group = QGroupBox("Add New Crew Member")
         form_layout = QFormLayout()
         
@@ -893,7 +875,6 @@ class CrewManagementWindow(QWidget):
             QMessageBox.warning(self, "Error", str(e))
     
     def assign_flight(self):
-        """Assign selected crew member to a flight"""
         if self.crew_select_combo.count() == 0:
             QMessageBox.warning(self, "Error", "No crew members available")
             return
@@ -917,7 +898,6 @@ class CrewManagementWindow(QWidget):
             QMessageBox.warning(self, "Error", str(e))
     
     def update_crew_status(self):
-        """Update the status of selected crew member"""
         if self.crew_select_combo.count() == 0:
             QMessageBox.warning(self, "Error", "No crew members available")
             return
@@ -937,7 +917,6 @@ class CrewManagementWindow(QWidget):
             QMessageBox.warning(self, "Error", str(e))
     
     def refresh_crew_list(self):
-        """Refresh the crew list table"""
         crew_list = self.crew_registry.all_crew()
         self.crew_table.setRowCount(len(crew_list))
         
@@ -955,14 +934,13 @@ class AIAssistantWindow(QWidget):
     def __init__(self, seat_selection_window):
         super().__init__()
         self.seat_selection_window = seat_selection_window
-        #inherit from SeatSelectionWindow
+
         self.ai_assistant = AIAssistant()
         self.init_ui()
 
     def init_ui(self):
         main_layout = QVBoxLayout()
         
-        # Add AI Assistant logo/avatar at the top
         avatar_label = QLabel()
         avatar_pixmap = QPixmap(64, 64)  # Create a larger empty pixmap
         avatar_pixmap.fill(QColor(52, 152, 219))  # Fill with blue color
@@ -1206,8 +1184,9 @@ class AIAssistantWindow(QWidget):
     def process_bot_commands(self, message):
         pass
 
+
 class PaymentWindow(QDialog):
-    def __init__(self, parent=None, passenger_name="", flight_info="", seat_id="", baggage_fee=0.0, ticket_price=149.99):
+    def __init__(self, parent=None, passenger_name="", flight_info="", seat_id="", baggage_fee=0.0, ticket_price=149.99, host='localhost', port=8888):
         super().__init__(parent)
         self.parent = parent
         self.passenger_name = passenger_name
@@ -1216,6 +1195,10 @@ class PaymentWindow(QDialog):
         self.baggage_fee = baggage_fee
         self.ticket_price = ticket_price
         self.payment_completed = False
+        
+        # Network configuration
+        self.host = host
+        self.port = port
         
         self.init_ui()
         
@@ -1264,14 +1247,14 @@ class PaymentWindow(QDialog):
         # Card type selection
         card_type_layout = QHBoxLayout()
         
-        visa_radio = QRadioButton("Visa", self)
-        visa_radio.setChecked(True)
-        mastercard_radio = QRadioButton("MasterCard", self)
-        amex_radio = QRadioButton("American Express", self)
+        self.visa_radio = QRadioButton("Visa", self)
+        self.visa_radio.setChecked(True)
+        self.mastercard_radio = QRadioButton("MasterCard", self)
+        self.amex_radio = QRadioButton("American Express", self)
         
-        card_type_layout.addWidget(visa_radio)
-        card_type_layout.addWidget(mastercard_radio)
-        card_type_layout.addWidget(amex_radio)
+        card_type_layout.addWidget(self.visa_radio)
+        card_type_layout.addWidget(self.mastercard_radio)
+        card_type_layout.addWidget(self.amex_radio)
         
         payment_layout.addLayout(card_type_layout)
         
@@ -1345,7 +1328,104 @@ class PaymentWindow(QDialog):
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.setModal(True)
     
+    def get_selected_card_type(self):
+        if self.visa_radio.isChecked():
+            return "Visa"
+        elif self.mastercard_radio.isChecked():
+            return "MasterCard"
+        elif self.amex_radio.isChecked():
+            return "American Express"
+        return "Unknown"
+    
+    def prepare_payment_data(self):
+        """Prepare payment data for transmission"""
+        total_price = self.ticket_price + self.baggage_fee
+        
+        payment_data = {
+            "transaction_id": f"TXN_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(self.passenger_name) % 10000:04d}",
+            "timestamp": datetime.now().isoformat(),
+            "passenger_info": {
+                "name": self.passenger_name,
+                "flight": self.flight_info,
+                "seat": self.seat_id
+            },
+            "payment_details": {
+                "ticket_price": self.ticket_price,
+                "baggage_fee": self.baggage_fee,
+                "total_amount": total_price,
+                "currency": "USD"
+            },
+            "card_info": {
+                "card_type": self.get_selected_card_type(),
+                "card_number_masked": f"****-****-****-{self.card_number.text()[-4:]}",
+                "cardholder_name": self.cardholder_name.text(),
+                "expiry_month": self.expiry_month.currentText(),
+                "expiry_year": self.expiry_year.currentText()
+            },
+            "status": "pending"
+        }
+        
+        return payment_data
+    
+    def send_payment_data(self, payment_data):
+        """Send payment data to the server with proper protocol"""
+        client_socket = None
+        try:
+            # Create socket with timeout
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.settimeout(15)  # 15 second timeout
+            
+            print(f"Connecting to {self.host}:{self.port}...")
+            client_socket.connect((self.host, self.port))
+            print("Connected successfully!")
+            
+            # Convert to JSON
+            json_data = json.dumps(payment_data, indent=2)
+            message = json_data.encode('utf-8')
+            
+            print(f"Sending {len(message)} bytes...")
+            # Send data length first, then the data
+            client_socket.sendall(len(message).to_bytes(4, byteorder='big'))
+            client_socket.sendall(message)
+            print("Data sent successfully!")
+            
+            # Receive response length first
+            print("Waiting for response length...")
+            response_length_bytes = client_socket.recv(4)
+            if len(response_length_bytes) != 4:
+                return "ERROR: Invalid response length header"
+            
+            response_length = int.from_bytes(response_length_bytes, byteorder='big')
+            print(f"Expecting response of {response_length} bytes...")
+            
+            # Receive the actual response
+            response_data = b''
+            while len(response_data) < response_length:
+                remaining = response_length - len(response_data)
+                chunk = client_socket.recv(min(remaining, 4096))
+                if not chunk:
+                    return "ERROR: Connection closed while receiving response"
+                response_data += chunk
+            
+            response = response_data.decode('utf-8')
+            print(f"Received response: {response}")
+            return response
+                
+        except socket.timeout:
+            return "ERROR: Connection timeout - server may be down"
+        except ConnectionRefusedError:
+            return "ERROR: Unable to connect to payment server - please ensure server is running"
+        except Exception as e:
+            return f"ERROR: Network error - {str(e)}"
+        finally:
+            if client_socket:
+                try:
+                    client_socket.close()
+                except:
+                    pass
+    
     def process_payment(self):
+        # Validation
         if not self.card_number.text().replace(" ", "").isdigit() or len(self.card_number.text().replace(" ", "")) < 16:
             self.status_label.setText("Invalid card number")
             self.status_label.setStyleSheet("color: #c0392b;")
@@ -1368,25 +1448,243 @@ class PaymentWindow(QDialog):
         self.status_label.setStyleSheet("color: #7f8c8d;")
         self.progress_bar.setVisible(True)
         
-        QTimer.singleShot(2000, self.finish_payment)
+        # Create worker thread for network operation
+        self.worker_thread = PaymentWorkerThread(self)
+        self.worker_thread.payment_response.connect(self.handle_payment_response)
+        self.worker_thread.start()
     
-    def finish_payment(self):
+    def handle_payment_response(self, response):
+        """Handle the server response"""
         self.progress_bar.setVisible(False)
-        self.status_label.setText("Payment Successful!")
-        self.status_label.setStyleSheet("color: #27ae60; font-weight: bold;")
         
-        self.payment_completed = True
+        if response.startswith("ERROR:"):
+            self.status_label.setText(f"Payment Failed: {response[7:]}")  # Remove "ERROR: " prefix
+            self.status_label.setStyleSheet("color: #c0392b;")
+            self.process_button.setEnabled(True)
+            self.cancel_button.setEnabled(True)
+        elif "SUCCESS" in response:
+            self.status_label.setText("Payment Successful!")
+            self.status_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+            self.payment_completed = True
+            self.cancel_button.setText("Close")
+            self.cancel_button.setEnabled(True)
+            self.process_button.setVisible(False)
+            QTimer.singleShot(1500, lambda: self.accept())
+        else:
+            self.status_label.setText("Payment processed - please check confirmation")
+            self.status_label.setStyleSheet("color: #f39c12;")
+            self.payment_completed = True
+            self.cancel_button.setText("Close")
+            self.cancel_button.setEnabled(True)
+            self.process_button.setVisible(False)
+            QTimer.singleShot(1500, lambda: self.accept())
+
+class PaymentWorkerThread(QThread):
+    payment_response = pyqtSignal(str)
+    
+    def __init__(self, payment_window):
+        super().__init__()
+        self.payment_window = payment_window
+    
+    def run(self):
+        try:
+            payment_data = self.payment_window.prepare_payment_data()
+            response = self.payment_window.send_payment_data(payment_data)
+            self.payment_response.emit(response)
+        except Exception as e:
+            self.payment_response.emit(f"ERROR: {str(e)}")
+
+class PaymentManagementWindow(QWidget):
+    """New tab for payment management and server control"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.payment_server = None
+        self.server_thread = None
+        self.init_ui()
         
-        self.cancel_button.setText("Close")
-        self.cancel_button.setEnabled(True)
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
         
-        self.process_button.setVisible(False)
+        # Payment Server Control Group
+        server_group = QGroupBox("Payment Server Control")
+        server_layout = QVBoxLayout()
         
-        QTimer.singleShot(1000, lambda: self.accept())
+        # Server status
+        self.status_label = QLabel("Payment Server: Stopped")
+        self.status_label.setStyleSheet("font-weight: bold; color: #c0392b;")
+        server_layout.addWidget(self.status_label)
+        
+        # Server control buttons
+        button_layout = QHBoxLayout()
+        
+        self.start_server_btn = QPushButton("Start Payment Server")
+        self.start_server_btn.clicked.connect(self.start_payment_server)
+        button_layout.addWidget(self.start_server_btn)
+        
+        self.stop_server_btn = QPushButton("Stop Payment Server")
+        self.stop_server_btn.clicked.connect(self.stop_payment_server)
+        self.stop_server_btn.setEnabled(False)
+        button_layout.addWidget(self.stop_server_btn)
+        
+        server_layout.addLayout(button_layout)
+        
+        # Server info
+        info_label = QLabel("Server will run on localhost:8888")
+        info_label.setStyleSheet("color: #7f8c8d; font-style: italic;")
+        server_layout.addWidget(info_label)
+        
+        server_group.setLayout(server_layout)
+        layout.addWidget(server_group)
+        
+        # Test Payment Group
+        test_group = QGroupBox("Test Payment Processing")
+        test_layout = QVBoxLayout()
+        
+        test_label = QLabel("Test the payment system with sample data:")
+        test_layout.addWidget(test_label)
+        
+        self.test_payment_btn = QPushButton("Open Test Payment Window")
+        self.test_payment_btn.clicked.connect(self.open_test_payment)
+        self.test_payment_btn.setEnabled(False)  # Disabled until server starts
+        test_layout.addWidget(self.test_payment_btn)
+        
+        test_group.setLayout(test_layout)
+        layout.addWidget(test_group)
+        
+        # Transaction Logs Group
+        logs_group = QGroupBox("Transaction Logs")
+        logs_layout = QVBoxLayout()
+        
+        logs_info = QLabel("Transaction logs will be saved to:\n• payment_transactions.log\n• transactions/ directory")
+        logs_info.setStyleSheet("color: #7f8c8d;")
+        logs_layout.addWidget(logs_info)
+        
+        self.view_logs_btn = QPushButton("View Recent Transactions")
+        self.view_logs_btn.clicked.connect(self.view_transaction_logs)
+        logs_layout.addWidget(self.view_logs_btn)
+        
+        logs_group.setLayout(logs_layout)
+        layout.addWidget(logs_group)
+        
+        layout.addStretch()
+        self.setLayout(layout)
+    
+    def start_payment_server(self):
+        """Start the payment server in a separate thread"""
+        if self.payment_server is None or not getattr(self.payment_server, 'running', False):
+            self.payment_server = PaymentServer(host='localhost', port=8888)
+            
+            def run_server():
+                try:
+                    self.payment_server.start_server()
+                except Exception as e:
+                    print(f"Server error: {e}")
+            
+            self.server_thread = threading.Thread(target=run_server)
+            self.server_thread.daemon = True
+            self.server_thread.start()
+            
+            # Give server time to start
+            QTimer.singleShot(1000, self.update_server_status)
+            
+            self.start_server_btn.setEnabled(False)
+            self.stop_server_btn.setEnabled(True)
+            self.status_label.setText("Payment Server: Starting...")
+            self.status_label.setStyleSheet("font-weight: bold; color: #f39c12;")
+    
+    def stop_payment_server(self):
+        """Stop the payment server"""
+        if self.payment_server:
+            self.payment_server.stop_server()
+            self.payment_server = None
+        
+        self.status_label.setText("Payment Server: Stopped")
+        self.status_label.setStyleSheet("font-weight: bold; color: #c0392b;")
+        self.start_server_btn.setEnabled(True)
+        self.stop_server_btn.setEnabled(False)
+        self.test_payment_btn.setEnabled(False)
+    
+    def update_server_status(self):
+        """Update server status display"""
+        if self.payment_server and getattr(self.payment_server, 'running', False):
+            self.status_label.setText("Payment Server: Running on localhost:8888")
+            self.status_label.setStyleSheet("font-weight: bold; color: #27ae60;")
+            self.test_payment_btn.setEnabled(True)
+        else:
+            self.status_label.setText("Payment Server: Failed to start")
+            self.status_label.setStyleSheet("font-weight: bold; color: #c0392b;")
+            self.start_server_btn.setEnabled(True)
+            self.stop_server_btn.setEnabled(False)
+    
+    def open_test_payment(self):
+        payment_window = PaymentWindow(
+            parent=self,
+            passenger_name="John Smith",
+            flight_info="EJ123 - Cairo to Alexandria",
+            seat_id="12A",
+            baggage_fee=25.00,
+            ticket_price=299.99,
+            host='localhost',
+            port=8888
+        )
+        
+        result = payment_window.exec_()
+        
+        if result == payment_window.Accepted and payment_window.payment_completed:
+            QMessageBox.information(self, "Payment Success", "Payment completed successfully!")
+        else:
+            QMessageBox.information(self, "Payment Info", "Payment was cancelled or failed")
+    
+    def view_transaction_logs(self):
+        """Show a simple dialog with recent transaction info"""
+        try:
+            import os
+            import json
+            from datetime import datetime
+            
+            transactions_dir = "transactions"
+            if not os.path.exists(transactions_dir):
+                QMessageBox.information(self, "No Transactions", "No transactions found yet.")
+                return
+            
+            files = [f for f in os.listdir(transactions_dir) if f.endswith('.json')]
+            if not files:
+                QMessageBox.information(self, "No Transactions", "No transactions found yet.")
+                return
+            
+            # Get the most recent files (up to 5)
+            files.sort(reverse=True)
+            recent_files = files[:5]
+            
+            log_text = "Recent Transactions:\n\n"
+            for file in recent_files:
+                try:
+                    with open(os.path.join(transactions_dir, file), 'r') as f:
+                        data = json.load(f)
+                        passenger = data.get('passenger_info', {}).get('name', 'Unknown')
+                        amount = data.get('payment_details', {}).get('total_amount', 0)
+                        timestamp = data.get('timestamp', 'Unknown')
+                        log_text += f"• {passenger} - ${amount:.2f} - {timestamp}\n"
+                except:
+                    continue
+            
+            # Show in a message box
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Recent Transactions")
+            msg.setText(log_text)
+            msg.setStyleSheet("QLabel { min-width: 400px; }")
+            msg.exec_()
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not load transaction logs: {str(e)}")
 
 class MainApplication(QWidget):
     def __init__(self):
         super().__init__()
+        self.payment_management = None  # Will hold payment server reference
 
         self.setStyleSheet("""
             QWidget {
@@ -1500,26 +1798,30 @@ class MainApplication(QWidget):
             }
         """)        
 
-        # Create individual window instances
         self.seat_window = SeatSelectionWindow()
         self.feedback_window = FeedbackWindow()
         self.baggage_window = BaggageInfoWindow()
         self.crew_window = CrewManagementWindow()
-        self.ai_assistant_window = AIAssistantWindow(self.seat_window) 
+        self.ai_assistant_window = AIAssistantWindow(self.seat_window)
+        self.payment_management = PaymentManagementWindow(self)
 
-        # Add windows to tabs
         tabs.addTab(self.seat_window, "Seat Selection")
         tabs.addTab(self.feedback_window, "Feedback")
         tabs.addTab(self.baggage_window, "Baggage Info")
         tabs.addTab(self.crew_window, "Crew Management")
-        tabs.addTab(self.ai_assistant_window, "AI Assistant")  # Add AI Assistant tab
+        tabs.addTab(self.ai_assistant_window, "AI Assistant")
+        tabs.addTab(self.payment_management, "Payment System")
 
         layout.addWidget(tabs)
         
         self.setLayout(layout)
         self.setWindowTitle("Flight Booking System")
         self.setGeometry(100, 100, 800, 900)
-
+    
+    def closeEvent(self, event):
+        if self.payment_management and self.payment_management.payment_server:
+            self.payment_management.stop_payment_server()
+        event.accept()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)  
