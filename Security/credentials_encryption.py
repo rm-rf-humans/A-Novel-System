@@ -1,4 +1,4 @@
-import os
+import os 
 from cryptography.fernet import Fernet
 from abc import ABC, abstractmethod
 
@@ -27,7 +27,6 @@ class CredentialsManager(BaseCredentialsManager):
             self.initialized = True
 
     def load_or_generate_key(self):
-        # Generate a key if it doesn't exist
         if not os.path.exists(self.key_file):
             key = Fernet.generate_key()
             with open(self.key_file, 'wb') as key_file:
