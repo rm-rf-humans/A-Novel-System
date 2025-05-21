@@ -17,29 +17,27 @@ from utilities.seat_swap import Passenger, Socializer, TallPassenger, EcoPasseng
 from baggage.Baggage import Baggage
 from ML.Bot import AIAssistant
 from Networking.payment_server import PaymentServer
+from Database.database_handler import DatabaseHandler
 
 class SeatSelectionWindow(QWidget):
     def __init__(self):
         super().__init__()
+        self.db = DatabaseHandler(host="localhost", user="root", password="11", database="flight_booking")
+        if not self.db.connect():
+            print("Failed to connect to database")
+            return
+                
+        self.db.create_tables()
 
-        self.available_seats = {
-            "1A": True, "1B": True, "1C": True, "1D": True,
-            "2A": True, "2B": True, "2C": True, "2D": True,
-            "3A": True, "3B": True, "3C": True, "3D": True,
-            "4A": True, "4B": True, "4C": True, "4D": True,
-        }
+        self.init_flights_in_db()
+
+        self.flight_id = "FL001"
+        self.load_available_seats()
 
         self.selected_seat = None
         self.seat_swapper = SeatSwapper()
-        self.flights = [
-        Flight("FL001", "AirExpress", "New York", "Los Angeles", 
-               time(8, 0), time(11, 30), datetime.now().date(), 120),
-        Flight("FL002", "SkyWings", "Chicago", "Miami", 
-               time(9, 15), time(12, 45), datetime.now().date(), 90),
-        Flight("FL003", "OceanAir", "Boston", "San Francisco", 
-               time(14, 30), time(18, 0), datetime.now().date(), 75)
-        ]
-    
+
+        self.flights = self.load_flights_from_db()
         self.flight_proxies = [FlightScheduleProxy(flight) for flight in self.flights]
     
         self.ticket_counter = 1000
@@ -210,6 +208,75 @@ class SeatSelectionWindow(QWidget):
         self.setGeometry(100, 100, 600, 800)
         self.show()
 
+    def init_flights_in_db(self):
+        existing_flights = self.db.get_all_flights()
+        if existing_flights and len(existing_flights) > 0:
+            return  # Flights already exist
+        
+        # Add sample flights
+        flights_data = [
+            ("FL001", "AirExpress", "New York", "Los Angeles", 
+             time(8, 0), time(11, 30), datetime.now().date(), 120),
+            ("FL002", "SkyWings", "Chicago", "Miami", 
+             time(9, 15), time(12, 45), datetime.now().date(), 90),
+            ("FL003", "OceanAir", "Boston", "San Francisco", 
+             time(14, 30), time(18, 0), datetime.now().date(), 75)
+        ]
+        
+        for flight_data in flights_data:
+            self.db.add_flight(*flight_data)
+        
+        # Initialize seats for each flight
+        default_seat_map = {
+            "1A": True, "1B": True, "1C": True, "1D": True,
+            "2A": True, "2B": True, "2C": True, "2D": True,
+            "3A": True, "3B": True, "3C": True, "3D": True,
+            "4A": True, "4B": True, "4C": True, "4D": True,
+        }
+        
+        for flight_data in flights_data:
+            flight_id = flight_data[0]
+            self.db.initialize_seats_for_flight(flight_id, default_seat_map)
+
+    def load_flights_from_db(self):
+        """Load flights from database"""
+        flights_data = self.db.get_all_flights()
+        flights = []
+        
+        for flight_data in flights_data:
+            # Assuming Flight class constructor matches database fields
+            flight = Flight(
+                flight_data[0],  
+                flight_data[1],  
+                flight_data[2],  
+                flight_data[3],  
+                flight_data[4],  
+                flight_data[5],  
+                flight_data[6],  
+                flight_data[7]   
+            )
+            flights.append(flight)
+        
+        return flights
+
+    def load_available_seats(self):
+        """Load available seats from database for current flight"""
+        available_seats_data = self.db.get_available_seats(self.flight_id)
+        
+        # Initialize all seats as unavailable first
+        self.available_seats = {
+            "1A": False, "1B": False, "1C": False, "1D": False,
+            "2A": False, "2B": False, "2C": False, "2D": False,
+            "3A": False, "3B": False, "3C": False, "3D": False,
+            "4A": False, "4B": False, "4C": False, "4D": False,
+        }
+        
+        # Update with available seats from database
+        for seat_data in available_seats_data:
+            seat_id = seat_data[0]
+            if seat_id in self.available_seats:
+                self.available_seats[seat_id] = True
+
     def generate_ticket_id(self):
         self.ticket_counter += 1
         return f"TKT{self.ticket_counter}"
@@ -247,6 +314,57 @@ class SeatSelectionWindow(QWidget):
             if flight.flight_id == flight_id:
                 return flight
         return None
+
+
+    def on_flight_changed(self):
+        """Handle flight selection change"""
+        selected_flight = self.get_selected_flight()
+        if selected_flight:
+            self.flight_id = selected_flight.flight_id
+            self.load_available_seats()
+            self.refresh_seat_display()
+
+    def refresh_seat_display(self):
+        """Refresh seat buttons display based on current availability"""
+        for i in range(self.grid_layout.count()):
+            widget = self.grid_layout.itemAt(i).widget()
+            if isinstance(widget, QPushButton) and widget.text() in self.available_seats:
+                seat_id = widget.text()
+                is_available = self.available_seats[seat_id]
+                widget.setEnabled(is_available)
+                
+                if seat_id.endswith(('A', 'D')):  # Window seats
+                    if is_available:
+                        widget.setStyleSheet("""
+                            QPushButton {
+                                background-color: #85c1e9;
+                                color: #2c3e50;
+                                border: none;
+                                border-radius: 8px;
+                                font-weight: bold;
+                            }
+                            QPushButton:hover {
+                                background-color: #5dade2;
+                            }
+                        """)
+                    else:
+                        widget.setStyleSheet("background-color: #d6eaf8; color: #7f8c8d; border: none; border-radius: 8px;")
+                else:  # Middle seats
+                    if is_available:
+                        widget.setStyleSheet("""
+                            QPushButton {
+                                background-color: #aed6f1;
+                                color: #2c3e50;
+                                border: none;
+                                border-radius: 8px;
+                                font-weight: bold;
+                            }
+                            QPushButton:hover {
+                                background-color: #7fb3d5;
+                            }
+                        """)
+                    else:
+                        widget.setStyleSheet("background-color: #ebf5fb; color: #7f8c8d; border: none; border-radius: 8px;")
 
     def create_seat_buttons(self):
         row = 0
@@ -423,7 +541,9 @@ class SeatSelectionWindow(QWidget):
         if self.payment_status.isChecked():
             self.complete_booking(
                 passenger_name=passenger_name,
-                flight_id=flight_id, 
+                flight_id=flight_id,
+                email=None,
+                age=age,
                 preference=preference,
                 baggage_weight=baggage_weight,
                 baggage_fee=baggage_fee,
@@ -441,86 +561,146 @@ class SeatSelectionWindow(QWidget):
             if payment_window.exec_() == QDialog.Accepted:
                 self.complete_booking(
                     passenger_name=passenger_name,
-                    flight_id=flight_id, 
+                    flight_id=flight_id,
+                    email=None,
+                    age=age,
                     preference=preference,
                     baggage_weight=baggage_weight,
                     baggage_fee=baggage_fee,
                     payment_status=True
                 )
+        
+      #  passenger_id = self.db.add_passenger(passenger_name, email, age, )
+    def complete_booking(self, passenger_name, email, age, flight_id, preference, baggage_weight, baggage_fee, payment_status):
+        try:
+            passenger_type = self.passenger_type.currentText()
+            special_data = None
+            
+            if passenger_type == "Socializer":
+                special_data = self.interest_input.text() or "General socializing"
+            elif passenger_type == "Tall":
+                special_data = f"Height: {self.height_input.value()} cm"
+            elif passenger_type == "Eco-Friendly":
+                eco_passenger = EcoPassenger(passenger_name, self.selected_seat, preference)
+                special_data = f"Recommended Meal: {eco_passenger.recommend_meal()}"
+            
+            # Add passenger to database
+            passenger_id = self.db.add_passenger(
+                name=passenger_name,
+                email=email,
+                age=age,
+                passenger_type=passenger_type,
+                preferences=preference,
+                special_data=special_data
+            )
+            
+            if passenger_id is None:
+                self.selected_seat_label.setText("Error: Failed to save passenger data")
+                return
+            
+            # Add baggage if applicable
+            if baggage_weight > 0:
+                baggage_success = self.db.add_baggage(passenger_id, baggage_weight, baggage_fee)
+                if not baggage_success:
+                    print("Warning: Failed to save baggage data")
+            
+            # Generate ticket ID and create booking
+            ticket_id = self.generate_ticket_id()
+            booking_success = self.db.create_booking(
+                ticket_id=ticket_id,
+                passenger_id=passenger_id,
+                flight_id=flight_id,
+                seat_id=self.selected_seat,
+                payment_status=payment_status
+            )
+            
+            if not booking_success:
+                self.selected_seat_label.setText("Error: Failed to create booking")
+                return
+            
+            # Update payment status if needed
+            if payment_status:
+                payment_update = self.db.update_booking_payment(ticket_id, True)
+                if not payment_update:
+                    print("Warning: Failed to update payment status")
+            
+            # Create passenger object for seat swapper
+            selected_flight = None
+            for flight in self.flights:
+                if flight.flight_id == flight_id:
+                    selected_flight = flight
+                    break
+                    
+            passenger = self.create_appropriate_passenger(
+                name=passenger_name, 
+                seat=self.selected_seat, 
+                preference=preference
+            )
+            
+            # Create ticket proxy
+            ticket_proxy = self.create_ticket(
+                passenger_name=passenger_name,
+                flight_id=flight_id,
+                seat_number=self.selected_seat,
+                payment_status=payment_status
+            )
+            ticket_details = ticket_proxy.get_ticket_details()
+            
+            self.seat_swapper.add_passenger(passenger)
 
-    def complete_booking(self, passenger_name, flight_id, preference, baggage_weight, baggage_fee, payment_status):
-        selected_flight = None
-        for flight in self.flights:
-            if flight.flight_id == flight_id:
-                selected_flight = flight
-                break
-                
-        passenger = self.create_appropriate_passenger(
-            name=passenger_name, 
-            seat=self.selected_seat, 
-            preference=preference
-        )
-        
-        # Create ticket
-        ticket_proxy = self.create_ticket(
-            passenger_name=passenger_name,
-            flight_id=flight_id,
-            seat_number=self.selected_seat,
-            payment_status=payment_status
-        )
-        ticket_details = ticket_proxy.get_ticket_details()
-        
-        self.seat_swapper.add_passenger(passenger)
-
-        flight_info = f"{selected_flight.flight_id}: {selected_flight.airline} ({selected_flight.source} to {selected_flight.destination})"
-        
-        confirmation_text = f"Booking confirmed for {passenger_name} on {flight_info} with seat {self.selected_seat}"
-        confirmation_text += f"\nPreference: {preference}"
-        confirmation_text += f"\nTicket ID: {ticket_details['ticket_id']}"
-        confirmation_text += f"\nPayment Status: {'Paid' if payment_status else 'Pending'}"
-                
-        # Add passenger type specific info
-        passenger_type = self.passenger_type.currentText()
-        if passenger_type == "Socializer":
-            confirmation_text += f"\nInterests: {self.interest_input.text()}"
-        elif passenger_type == "Tall":
-            confirmation_text += f"\nHeight: {self.height_input.value()} cm"
-        elif passenger_type == "Eco-Friendly":
-            eco_passenger = passenger
-            confirmation_text += f"\nRecommended Meal: {eco_passenger.recommend_meal()}"
-        
-        # Add baggage information to confirmation
-        if baggage_fee > 0:
-            confirmation_text += f"\nBaggage fee: ${baggage_fee} (Weight: {baggage_weight}kg)"
-        else:
-            confirmation_text += f"\nNo baggage fee (Weight: {baggage_weight}kg)"
-        
-        self.selected_seat_label.setStyleSheet("""
-            background-color: #e8f8f5;
-            border: 1px solid #abebc6;
-            border-radius: 5px;
-            padding: 10px;
-            color: #27ae60;
-            font-weight: bold;
-        """)
-        self.selected_seat_label.setText(confirmation_text)
-        
-        # Mark seat as unavailable
-        self.available_seats[self.selected_seat] = False
-        
-        # Update seat button styles to show as unavailable
-        for i in range(self.grid_layout.count()):
-            widget = self.grid_layout.itemAt(i).widget()
-            if isinstance(widget, QPushButton) and widget.text() == self.selected_seat:
-                if self.selected_seat.endswith(('A', 'D')):  # Window seats
-                    widget.setStyleSheet("background-color: #d6eaf8; color: #7f8c8d; border: none; border-radius: 8px;")
-                else:  # Middle seats
-                    widget.setStyleSheet("background-color: #ebf5fb; color: #7f8c8d; border: none; border-radius: 8px;")
-                widget.setEnabled(False)
-                break
-        
-        # Reset selection
-        self.selected_seat = None
+            flight_info = f"{selected_flight.flight_id}: {selected_flight.airline} ({selected_flight.source} to {selected_flight.destination})"
+            
+            confirmation_text = f"Booking confirmed for {passenger_name} on {flight_info} with seat {self.selected_seat}"
+            confirmation_text += f"\nPreference: {preference}"
+            confirmation_text += f"\nTicket ID: {ticket_id}"
+            confirmation_text += f"\nPayment Status: {'Paid' if payment_status else 'Pending'}"
+            confirmation_text += f"\nPassenger ID: {passenger_id}"
+                    
+            # Add passenger type specific info
+            if passenger_type == "Socializer":
+                confirmation_text += f"\nInterests: {self.interest_input.text()}"
+            elif passenger_type == "Tall":
+                confirmation_text += f"\nHeight: {self.height_input.value()} cm"
+            elif passenger_type == "Eco-Friendly":
+                eco_passenger = passenger
+                confirmation_text += f"\nRecommended Meal: {eco_passenger.recommend_meal()}"
+            
+            # Add baggage information to confirmation
+            if baggage_fee > 0:
+                confirmation_text += f"\nBaggage fee: ${baggage_fee} (Weight: {baggage_weight}kg)"
+            else:
+                confirmation_text += f"\nNo baggage fee (Weight: {baggage_weight}kg)"
+            
+            self.selected_seat_label.setStyleSheet("""
+                background-color: #e8f8f5;
+                border: 1px solid #abebc6;
+                border-radius: 5px;
+                padding: 10px;
+                color: #27ae60;
+                font-weight: bold;
+            """)
+            self.selected_seat_label.setText(confirmation_text)
+            
+            # Mark seat as unavailable in local state and database
+            self.available_seats[self.selected_seat] = False
+            
+            # Update seat button styles to show as unavailable
+            for i in range(self.grid_layout.count()):
+                widget = self.grid_layout.itemAt(i).widget()
+                if isinstance(widget, QPushButton) and widget.text() == self.selected_seat:
+                    if self.selected_seat.endswith(('A', 'D')):  # Window seats
+                        widget.setStyleSheet("background-color: #d6eaf8; color: #7f8c8d; border: none; border-radius: 8px;")
+                    else:  # Middle seats
+                        widget.setStyleSheet("background-color: #ebf5fb; color: #7f8c8d; border: none; border-radius: 8px;")
+                    widget.setEnabled(False)
+                    break
+            
+            # Reset selection
+            self.selected_seat = None
+            
+        except Exception as e:
+            self.selected_seat_label.setText(f"Error: Failed to complete booking - {str(e)}")
+            print(f"Booking error: {e}")
 
     def swap_seat(self):
         self.seat_swapper.assign_seats()
@@ -547,6 +727,16 @@ class SeatSelectionWindow(QWidget):
         
         self.selected_seat_label.setText("Available Zone Seats:\n" + "\n".join(zone_info))
 
+    def get_booking_details(self, ticket_id):
+        return self.db.get_booking_by_ticket(ticket_id)
+
+    def get_passenger_baggage(self, passenger_id):
+        return self.db.get_baggage_by_passenger(passenger_id)
+
+    def __del__(self):
+        if hasattr(self, 'db'):
+            self.db.disconnect()
+
     def schedule_reminder(self):
         passenger_name = self.name_input.text()
         email = self.email_input.text()
@@ -561,7 +751,6 @@ class SeatSelectionWindow(QWidget):
             sender_password="password123"
         )
         
-        # Attempt to send/schedule reminder
         success = email_sender.send_reminder(
             passenger_name=passenger_name,
             recipient_email=email,
@@ -1606,7 +1795,6 @@ class PaymentWorkerThread(QThread):
             self.payment_response.emit(f"ERROR: {str(e)}")
 
 class PaymentManagementWindow(QWidget):
-    """New tab for payment management and server control"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
@@ -1619,16 +1807,13 @@ class PaymentManagementWindow(QWidget):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
-        # Payment Server Control Group
         server_group = QGroupBox("Payment Server Control")
         server_layout = QVBoxLayout()
         
-        # Server status
         self.status_label = QLabel("Payment Server: Stopped")
         self.status_label.setStyleSheet("font-weight: bold; color: #c0392b;")
         server_layout.addWidget(self.status_label)
         
-        # Server control buttons
         button_layout = QHBoxLayout()
         
         self.start_server_btn = QPushButton("Start Payment Server")
@@ -1642,7 +1827,6 @@ class PaymentManagementWindow(QWidget):
         
         server_layout.addLayout(button_layout)
         
-        # Server info
         info_label = QLabel("Server will run on localhost:8888")
         info_label.setStyleSheet("color: #7f8c8d; font-style: italic;")
         server_layout.addWidget(info_label)
@@ -1766,7 +1950,6 @@ class PaymentManagementWindow(QWidget):
                 QMessageBox.information(self, "No Transactions", "No transactions found yet.")
                 return
             
-            # Get the most recent files (up to 5)
             files.sort(reverse=True)
             recent_files = files[:5]
             
@@ -1795,7 +1978,7 @@ class PaymentManagementWindow(QWidget):
 class MainApplication(QWidget):
     def __init__(self):
         super().__init__()
-        self.payment_management = None  # Will hold payment server reference
+        self.payment_management = None
 
         self.setStyleSheet("""
             QWidget {
@@ -1870,7 +2053,6 @@ class MainApplication(QWidget):
         layout = QVBoxLayout()
         layout.setSpacing(15)
 
-        # Add fancy header
         header = QWidget()
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
@@ -1882,7 +2064,6 @@ class MainApplication(QWidget):
         header_layout.addStretch()
         layout.addWidget(header)
 
-        # Create tab widget with modern styling
         tabs = QTabWidget()
         tabs.setStyleSheet("""
             QTabWidget::pane {
