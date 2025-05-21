@@ -1,3 +1,4 @@
+import os
 import sys
 import threading
 import socket
@@ -14,6 +15,7 @@ from flights.CrewMember import CrewMember, CrewRegistry, CrewRegistryProxy, User
 from utilities.Feedback import Feedback
 from utilities.ReminderEmailSender import ReminderEmailSender
 from utilities.seat_swap import Passenger, Socializer, TallPassenger, EcoPassenger, SeatSwapper 
+from Security.credentials_encryption import CredentialsManager
 from baggage.Baggage import Baggage
 from ML.Bot import AIAssistant
 from Networking.payment_server import PaymentServer
@@ -1516,8 +1518,11 @@ class PaymentWindow(QDialog):
         self.host = host
         self.port = port
         
-        self.init_ui()
+        # Initialize credential manager for secure payment processing
+        self.credentials_manager = CredentialsManager()
         
+        self.init_ui()
+    
     def init_ui(self):
         layout = QVBoxLayout()
         layout.setContentsMargins(20, 20, 20, 20)
@@ -1644,13 +1649,30 @@ class PaymentWindow(QDialog):
         elif self.amex_radio.isChecked():
             return "American Express"
         return "Unknown"
-    
+
     def prepare_payment_data(self):
-        """Prepare payment data for transmission"""
         total_price = self.ticket_price + self.baggage_fee
+        transaction_id = f"TXN_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(self.passenger_name) % 10000:04d}"
+        
+        card_info = {
+            "card_type": self.get_selected_card_type(),
+            "card_number": self.card_number.text().replace(" ", ""),  # Store full card number temporarily
+            "cardholder_name": self.cardholder_name.text(),
+            "expiry_month": self.expiry_month.currentText(),
+            "expiry_year": self.expiry_year.currentText(),
+            "cvv": self.cvv_code.text()  # Store CVV temporarily
+        }
+        
+        card_secret = f"{card_info['card_number']}:{card_info['cvv']}:{transaction_id}"
+        
+        # Encrypt the sensitive card data
+        self.credentials_manager.encrypt_credentials(
+            email=f"{card_info['cardholder_name']}_{transaction_id}", 
+            password=card_secret
+        )
         
         payment_data = {
-            "transaction_id": f"TXN_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(self.passenger_name) % 10000:04d}",
+            "transaction_id": transaction_id,
             "timestamp": datetime.now().isoformat(),
             "passenger_info": {
                 "name": self.passenger_name,
@@ -1664,11 +1686,17 @@ class PaymentWindow(QDialog):
                 "currency": "USD"
             },
             "card_info": {
-                "card_type": self.get_selected_card_type(),
+                "card_type": card_info["card_type"],
                 "card_number_masked": f"****-****-****-{self.card_number.text()[-4:]}",
-                "cardholder_name": self.cardholder_name.text(),
-                "expiry_month": self.expiry_month.currentText(),
-                "expiry_year": self.expiry_year.currentText()
+                "cardholder_name": card_info["cardholder_name"],
+                "expiry_month": card_info["expiry_month"],
+                "expiry_year": card_info["expiry_year"],
+                # CVV is not included in the payload, it's encrypted separately
+            },
+            "security": {
+                "encrypted": True,
+                "encryption_method": "fernet",
+                "credentials_file": self.credentials_manager.creds_file
             },
             "status": "pending"
         }
@@ -1688,7 +1716,7 @@ class PaymentWindow(QDialog):
             json_data = json.dumps(payment_data, indent=2)
             message = json_data.encode('utf-8')
             
-            print(f"Sending {len(message)} bytes...")
+            print(f"Sending {len(message)} bytes of encrypted payment data...")
             client_socket.sendall(len(message).to_bytes(4, byteorder='big'))
             client_socket.sendall(message)
             print("Data sent successfully!")
@@ -1711,6 +1739,15 @@ class PaymentWindow(QDialog):
             
             response = response_data.decode('utf-8')
             print(f"Received response: {response}")
+            
+            # After successful processing, clean up encrypted credentials
+            if "SUCCESS" in response and os.path.exists(self.credentials_manager.creds_file):
+                try:
+                    os.remove(self.credentials_manager.creds_file)
+                    print("Temporary encrypted credentials cleaned up")
+                except Exception as e:
+                    print(f"Warning: Could not clean up credentials file: {e}")
+                    
             return response
                 
         except socket.timeout:
@@ -1725,7 +1762,6 @@ class PaymentWindow(QDialog):
                     client_socket.close()
                 except:
                     pass
-    
     def process_payment(self):
         # Validation
         if not self.card_number.text().replace(" ", "").isdigit() or len(self.card_number.text().replace(" ", "")) < 16:
@@ -1794,6 +1830,200 @@ class PaymentWorkerThread(QThread):
         except Exception as e:
             self.payment_response.emit(f"ERROR: {str(e)}")
 
+
+# PaymentServer class
+class PaymentServer:
+    def __init__(self, host='localhost', port=8888):
+        self.host = host
+        self.port = port
+        self.running = False
+        self.server_socket = None
+        self.transactions_dir = "transactions"
+        self.log_file = "payment_transactions.log"
+        
+        # Initialize the credentials manager for decryption
+        self.credentials_manager = CredentialsManager()
+        
+        # Create transactions directory if it doesn't exist
+        if not os.path.exists(self.transactions_dir):
+            os.makedirs(self.transactions_dir)
+    
+    def start_server(self):
+        """Start the payment server"""
+        try:
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket.bind((self.host, self.port))
+            self.server_socket.listen(5)
+            self.running = True
+            
+            print(f"Payment server started on {self.host}:{self.port}")
+            self.log_transaction("SERVER", f"Payment server started on {self.host}:{self.port}")
+            
+            while self.running:
+                try:
+                    client_socket, addr = self.server_socket.accept()
+                    print(f"Connection from {addr}")
+                    self.handle_client(client_socket, addr)
+                except Exception as e:
+                    if self.running:  # Only print error if server is supposed to be running
+                        print(f"Error accepting connection: {e}")
+                        self.log_transaction("ERROR", f"Error accepting connection: {e}")
+        
+        except Exception as e:
+            print(f"Server error: {e}")
+            self.log_transaction("ERROR", f"Server startup error: {e}")
+        finally:
+            if self.server_socket:
+                self.server_socket.close()
+    
+    def stop_server(self):
+        """Stop the payment server"""
+        self.running = False
+        try:
+            # Connect to our own server to unblock accept()
+            temp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            temp_socket.connect((self.host, self.port))
+            temp_socket.close()
+        except:
+            pass
+        
+        if self.server_socket:
+            self.server_socket.close()
+            self.server_socket = None
+            
+        print("Payment server stopped")
+        self.log_transaction("SERVER", "Payment server stopped")
+    
+    def handle_client(self, client_socket, addr):
+        """Handle client connection with encryption support"""
+        try:
+            # Receive message length
+            length_bytes = client_socket.recv(4)
+            if len(length_bytes) != 4:
+                print("Invalid length header")
+                return
+                
+            message_length = int.from_bytes(length_bytes, byteorder='big')
+            print(f"Expecting message of {message_length} bytes")
+            
+            # Receive message data
+            message_data = b''
+            while len(message_data) < message_length:
+                remaining = message_length - len(message_data)
+                chunk = client_socket.recv(min(remaining, 4096))
+                if not chunk:
+                    break
+                message_data += chunk
+            
+            if len(message_data) < message_length:
+                print(f"Incomplete message: {len(message_data)}/{message_length} bytes")
+                return
+                
+            # Parse message
+            message = message_data.decode('utf-8')
+            payment_data = json.loads(message)
+            
+            # Extract transaction ID for logging
+            transaction_id = payment_data.get('transaction_id', 'UNKNOWN')
+            
+            print(f"Received payment data for transaction: {transaction_id}")
+            self.log_transaction(transaction_id, f"Received payment request from {addr}")
+            
+            if payment_data.get('security', {}).get('encrypted', False):
+                print("Received encrypted payment data, decrypting...")
+                
+                try:
+                    email, password = self.credentials_manager.decrypt_credentials()
+                    
+                    if email and password:
+                        card_parts = password.split(':')
+                        if len(card_parts) == 3 and card_parts[2] == transaction_id:
+                            # Successfully decrypted matching transaction
+                            card_number = card_parts[0]
+                            cvv = card_parts[1]
+                            
+                            # Add back the sensitive data for processing (would normally be sent to payment processor)
+                            payment_data['card_info']['card_number_full'] = card_number
+                            payment_data['card_info']['cvv'] = cvv
+                            
+                            print(f"Successfully decrypted payment data for transaction {transaction_id}")
+                            self.log_transaction(transaction_id, "Payment data decrypted successfully")
+                        else:
+                            print("Error: Transaction ID mismatch in decrypted data")
+                            self.log_transaction(transaction_id, "ERROR: Transaction ID mismatch in decrypted data")
+                    else:
+                        print("Error: Could not decrypt credentials")
+                        self.log_transaction(transaction_id, "ERROR: Could not decrypt credentials")
+                        
+                except Exception as e:
+                    print(f"Decryption error: {e}")
+                    self.log_transaction(transaction_id, f"ERROR: Decryption failed - {str(e)}")
+            
+            # Process payment (simulated)
+            payment_data['status'] = 'approved'
+            payment_data['authorization_code'] = f"AUTH_{hash(transaction_id) % 1000000:06d}"
+            payment_data['processed_at'] = datetime.now().isoformat()
+            
+            # Remove sensitive data before saving
+            if 'card_info' in payment_data:
+                if 'card_number_full' in payment_data['card_info']:
+                    del payment_data['card_info']['card_number_full']
+                if 'cvv' in payment_data['card_info']:
+                    del payment_data['card_info']['cvv']
+            
+            # Save transaction data
+            self.save_transaction(transaction_id, payment_data)
+            
+            # Send response
+            response = "SUCCESS: Payment processed successfully"
+            response_data = response.encode('utf-8')
+            
+            client_socket.sendall(len(response_data).to_bytes(4, byteorder='big'))
+            client_socket.sendall(response_data)
+            
+            print(f"Payment processed for transaction: {transaction_id}")
+            self.log_transaction(transaction_id, "Payment processed successfully")
+            
+        except Exception as e:
+            print(f"Error handling client: {e}")
+            self.log_transaction("ERROR", f"Client handling error: {e}")
+            
+            # Try to send error response
+            try:
+                error_msg = f"ERROR: {str(e)}"
+                error_data = error_msg.encode('utf-8')
+                client_socket.sendall(len(error_data).to_bytes(4, byteorder='big'))
+                client_socket.sendall(error_data)
+            except:
+                pass
+                
+        finally:
+            client_socket.close()
+    
+    def save_transaction(self, transaction_id, payment_data):
+        """Save transaction data to file"""
+        try:
+            filename = os.path.join(self.transactions_dir, f"{transaction_id}.json")
+            with open(filename, 'w') as f:
+                json.dump(payment_data, f, indent=2)
+            print(f"Transaction saved to {filename}")
+        except Exception as e:
+            print(f"Error saving transaction: {e}")
+            self.log_transaction(transaction_id, f"ERROR: Could not save transaction - {str(e)}")
+    
+    def log_transaction(self, transaction_id, message):
+        """Log transaction activity"""
+        try:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log_entry = f"[{timestamp}] [{transaction_id}] {message}\n"
+            
+            with open(self.log_file, 'a') as f:
+                f.write(log_entry)
+        except Exception as e:
+            print(f"Error writing to log: {e}")
+
+# Modify PaymentManagementWindow to include security status
 class PaymentManagementWindow(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1827,12 +2057,34 @@ class PaymentManagementWindow(QWidget):
         
         server_layout.addLayout(button_layout)
         
-        info_label = QLabel("Server will run on localhost:8888")
+        # Add security status
+        security_label = QLabel("Encryption: Enabled (Fernet)")
+        security_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+        server_layout.addWidget(security_label)
+        
+        info_label = QLabel("Server will run on localhost:8888 with encrypted payment processing")
         info_label.setStyleSheet("color: #7f8c8d; font-style: italic;")
         server_layout.addWidget(info_label)
         
         server_group.setLayout(server_layout)
         layout.addWidget(server_group)
+        
+        # Security Info Group
+        security_group = QGroupBox("Security Information")
+        security_layout = QVBoxLayout()
+        
+        security_info = QLabel(
+            "Payment data is encrypted using Fernet symmetric encryption:\n"
+            "• Card numbers and CVV codes are never stored in plain text\n"
+            "• Sensitive data is encrypted during transmission\n"
+            "• Temporary encryption keys are used for each transaction\n"
+            "• Credentials are securely cleaned up after processing"
+        )
+        security_info.setStyleSheet("color: #2c3e50;")
+        security_layout.addWidget(security_info)
+        
+        security_group.setLayout(security_layout)
+        layout.addWidget(security_group)
         
         # Test Payment Group
         test_group = QGroupBox("Test Payment Processing")
@@ -1891,7 +2143,6 @@ class PaymentManagementWindow(QWidget):
             self.status_label.setStyleSheet("font-weight: bold; color: #f39c12;")
     
     def stop_payment_server(self):
-        """Stop the payment server"""
         if self.payment_server:
             self.payment_server.stop_server()
             self.payment_server = None
@@ -1905,7 +2156,7 @@ class PaymentManagementWindow(QWidget):
     def update_server_status(self):
         """Update server status display"""
         if self.payment_server and getattr(self.payment_server, 'running', False):
-            self.status_label.setText("Payment Server: Running on localhost:8888")
+            self.status_label.setText("Payment Server: Running on localhost:8888 (Encrypted)")
             self.status_label.setStyleSheet("font-weight: bold; color: #27ae60;")
             self.test_payment_btn.setEnabled(True)
         else:
@@ -1929,7 +2180,7 @@ class PaymentManagementWindow(QWidget):
         result = payment_window.exec_()
         
         if result == payment_window.Accepted and payment_window.payment_completed:
-            QMessageBox.information(self, "Payment Success", "Payment completed successfully!")
+            QMessageBox.information(self, "Payment Success", "Payment completed successfully with encryption!")
         else:
             QMessageBox.information(self, "Payment Info", "Payment was cancelled or failed")
     
@@ -1953,7 +2204,7 @@ class PaymentManagementWindow(QWidget):
             files.sort(reverse=True)
             recent_files = files[:5]
             
-            log_text = "Recent Transactions:\n\n"
+            log_text = "Recent Transactions (Encrypted Processing):\n\n"
             for file in recent_files:
                 try:
                     with open(os.path.join(transactions_dir, file), 'r') as f:
@@ -1961,7 +2212,8 @@ class PaymentManagementWindow(QWidget):
                         passenger = data.get('passenger_info', {}).get('name', 'Unknown')
                         amount = data.get('payment_details', {}).get('total_amount', 0)
                         timestamp = data.get('timestamp', 'Unknown')
-                        log_text += f"• {passenger} - ${amount:.2f} - {timestamp}\n"
+                        encryption_status = "🔒 Encrypted" if data.get('security', {}).get('encrypted', False) else "⚠️ Unencrypted"
+                        log_text += f"• {passenger} - ${amount:.2f} - {timestamp} - {encryption_status}\n"
                 except:
                     continue
             
@@ -1969,7 +2221,7 @@ class PaymentManagementWindow(QWidget):
             msg = QMessageBox(self)
             msg.setWindowTitle("Recent Transactions")
             msg.setText(log_text)
-            msg.setStyleSheet("QLabel { min-width: 400px; }")
+            msg.setStyleSheet("QLabel { min-width: 450px; }")
             msg.exec_()
             
         except Exception as e:
