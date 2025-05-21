@@ -1,5 +1,5 @@
-import os 
-from cryptography.fernet import Fernet
+import os
+from cryptography.fernet import Fernet, InvalidToken
 from abc import ABC, abstractmethod
 
 class BaseCredentialsManager(ABC):
@@ -19,39 +19,59 @@ class CredentialsManager(BaseCredentialsManager):
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, key_file='security/credentials.key', creds_file='security/credentials.enc'):
+    def __init__(self, key_file='Security/credentials.key', creds_file='Security/credentials.enc'):
         if not hasattr(self, 'initialized'):
             self.key_file = key_file
             self.creds_file = creds_file
+
+            key_dir = os.path.dirname(self.key_file)
+            if key_dir and not os.path.exists(key_dir):
+                os.makedirs(key_dir, exist_ok=True)
+
+            creds_dir = os.path.dirname(self.creds_file)
+            if creds_dir and not os.path.exists(creds_dir):
+                os.makedirs(creds_dir, exist_ok=True)
+
             self.key = self.load_or_generate_key()
             self.initialized = True
 
     def load_or_generate_key(self):
-        if not os.path.exists(self.key_file):
-            key = Fernet.generate_key()
-            with open(self.key_file, 'wb') as key_file:
-                key_file.write(key)
-            print('New encryption key generated.')
-        else:
-            with open(self.key_file, 'rb') as key_file:
-                key = key_file.read()
+        if os.path.exists(self.key_file):
+            try:
+                with open(self.key_file, 'rb') as f:
+                    key = f.read().strip()
+                _ = Fernet(key)
+                return key
+            except (ValueError, InvalidToken):
+                print('Invalid key found; generating a new key.')
+
+        key = Fernet.generate_key()
+        with open(self.key_file, 'wb') as f:
+            f.write(key)
+        print('New encryption key generated.')
         return key
 
     def encrypt_credentials(self, email, password):
         fernet = Fernet(self.key)
-        encrypted_data = fernet.encrypt(f"{email}:{password}".encode())
-        with open(self.creds_file, 'wb') as enc_file:
-            enc_file.write(encrypted_data)
+        data = f"{email}:{password}".encode()
+        encrypted = fernet.encrypt(data)
+        with open(self.creds_file, 'wb') as f:
+            f.write(encrypted)
         print('Credentials encrypted and saved.')
 
     def decrypt_credentials(self):
-        fernet = Fernet(self.key)
-        if os.path.exists(self.creds_file):
-            with open(self.creds_file, 'rb') as enc_file:
-                encrypted_data = enc_file.read()
-            decrypted_data = fernet.decrypt(encrypted_data).decode()
-            email, password = decrypted_data.split(':')
-            return email, password
-        else:
+        if not os.path.exists(self.creds_file):
             print('No encrypted credentials found.')
+            return None, None
+
+        with open(self.creds_file, 'rb') as f:
+            encrypted = f.read()
+
+        fernet = Fernet(self.key)
+        try:
+            decrypted = fernet.decrypt(encrypted).decode()
+            email, password = decrypted.split(':', 1)
+            return email, password
+        except InvalidToken:
+            print('Decryption failed. Data may be corrupted or key is invalid.')
             return None, None
