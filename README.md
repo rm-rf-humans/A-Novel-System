@@ -180,7 +180,7 @@ numpy==2.2.6                # Numerical Computing
 multipledispatch==1.0.0     # Method Overloading
 ```
 
-## 🏃‍♂Quick Demo
+## Quick Demo
 
 1. **Start Application**: `python main.py`
 2. **Select Flight**: Choose from dropdown menu
